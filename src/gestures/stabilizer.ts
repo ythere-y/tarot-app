@@ -97,11 +97,15 @@ export function createGestureStabilizer(
 
       if (lossStartedAt !== undefined) {
         const pausedDuration = timestamp - lossStartedAt;
-        if (candidateStartedAt !== undefined) {
-          candidateStartedAt += pausedDuration;
-        }
-        if (readingOpenStartedAt !== undefined) {
-          readingOpenStartedAt += pausedDuration;
+        if (pausedDuration > config.lossGraceMs) {
+          resetRecognition();
+        } else {
+          if (candidateStartedAt !== undefined) {
+            candidateStartedAt += pausedDuration;
+          }
+          if (readingOpenStartedAt !== undefined) {
+            readingOpenStartedAt += pausedDuration;
+          }
         }
       }
       lossStartedAt = undefined;

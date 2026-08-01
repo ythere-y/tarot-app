@@ -130,6 +130,54 @@ describe('createGestureStabilizer', () => {
     ).toBe('OPEN_DWELL_COMPLETE');
   });
 
+  it('restarts fist confirmation when the recovery frame exceeds loss grace', () => {
+    const stabilizer = createStabilizer();
+    stabilizer.update('FIST', 0);
+    stabilizer.update('FIST', 100);
+    stabilizer.update('FIST', 200);
+    stabilizer.update('FIST', 300);
+    stabilizer.update('LOST', 301);
+
+    expect(stabilizer.update('FIST', 600)).toEqual({
+      gesture: 'UNKNOWN',
+      event: null,
+    });
+    expect(stabilizer.update('FIST', 700).event).toBeNull();
+    expect(stabilizer.update('FIST', 800).event).toBeNull();
+    expect(stabilizer.update('FIST', 900).event).toBeNull();
+    expect(stabilizer.update('FIST', 1_099).event).toBeNull();
+    expect(stabilizer.update('FIST', 1_100).event).toBe(
+      'FIST_DWELL_COMPLETE',
+    );
+  });
+
+  it('restarts reading open dwell when the recovery frame exceeds loss grace', () => {
+    const stabilizer = createStabilizer();
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 0);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 50);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 100);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 150);
+    stabilizer.update('LOST', 151);
+
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 500),
+    ).toEqual({
+      gesture: 'UNKNOWN',
+      event: null,
+    });
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 550);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 600);
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 650).event,
+    ).toBeNull();
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 799).event,
+    ).toBeNull();
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 800).event,
+    ).toBe('OPEN_DWELL_COMPLETE');
+  });
+
   it('emits LOST and resets pending dwell after the loss grace expires', () => {
     const stabilizer = createStabilizer();
     stabilizer.update('FIST', 0);
