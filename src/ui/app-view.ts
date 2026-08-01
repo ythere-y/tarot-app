@@ -29,6 +29,14 @@ export interface CameraViewStatus {
   expanded?: boolean;
 }
 
+export type ResourceViewStatus =
+  | { readonly status: 'idle' }
+  | {
+      readonly status: 'loading' | 'error';
+      readonly resource: 'card-back' | 'card-face';
+      readonly message: string;
+    };
+
 export interface AppViewModel {
   snapshot: DrawSnapshot;
   currentCard: TarotCard | null;
@@ -36,6 +44,7 @@ export interface AppViewModel {
   topic: InterpretationTopic;
   gesture: GestureViewStatus;
   camera: CameraViewStatus;
+  resource?: ResourceViewStatus;
   inputMode: InputMode;
   webglAvailable: boolean;
   cardCatalog?: readonly TarotCard[];
@@ -46,6 +55,7 @@ export interface AppViewActions {
   startCamera?: () => void;
   retryCamera?: () => void;
   usePointerMode?: () => void;
+  retryResource?: () => void;
   selectTopic?: (topic: InterpretationTopic) => void;
   reset?: () => void;
 }
@@ -179,6 +189,14 @@ export function createAppView(root: HTMLElement): AppView {
       <main class="experience-grid">
         <section class="scene-stage" aria-label="塔罗抽牌星盘">
           <div class="scene-host" data-ui="scene-host"></div>
+
+          <aside class="resource-status" data-ui="resource-status" hidden>
+            <p data-ui="resource-message" role="status" aria-live="polite"></p>
+            <button class="text-button" type="button"
+              data-action="retry-resource" hidden>
+              Retry loading
+            </button>
+          </aside>
 
           <section class="gesture-hud" aria-label="手势识别状态">
             <div class="gesture-hud__ring" data-ui="gesture-ring" aria-hidden="true"></div>
@@ -359,6 +377,9 @@ export function createAppView(root: HTMLElement): AppView {
       case 'use-pointer':
         actions.usePointerMode?.();
         break;
+      case 'retry-resource':
+        actions.retryResource?.();
+        break;
       case 'select-topic': {
         const topic = button.dataset.topic;
         if (isTopic(topic)) {
@@ -454,6 +475,7 @@ export function createAppView(root: HTMLElement): AppView {
   return {
     render(model): void {
       const totalCards = model.totalCards ?? DEFAULT_TOTAL;
+      const resource = model.resource ?? { status: 'idle' };
       const orientation = model.snapshot.result?.orientation ?? 'upright';
       const progress = clampProgress(model.gesture.progress);
       const progressPercent = Math.round(progress * 100);
@@ -485,6 +507,28 @@ export function createAppView(root: HTMLElement): AppView {
         getRequiredElement(root, '[data-ui="input-mode"]'),
         model.inputMode === 'gesture' ? APP_COPY.gestureMode : APP_COPY.pointerMode,
       );
+
+      const resourceStatus = getRequiredElement<HTMLElement>(
+        root,
+        '[data-ui="resource-status"]',
+      );
+      const resourceMessage = getRequiredElement<HTMLElement>(
+        root,
+        '[data-ui="resource-message"]',
+      );
+      const retryResource = getRequiredElement<HTMLButtonElement>(
+        root,
+        '[data-action="retry-resource"]',
+      );
+      resourceStatus.hidden = resource.status === 'idle';
+      resourceStatus.dataset.status = resource.status;
+      resourceMessage.textContent =
+        resource.status === 'idle' ? '' : resource.message;
+      resourceMessage.setAttribute(
+        'role',
+        resource.status === 'error' ? 'alert' : 'status',
+      );
+      retryResource.hidden = resource.status !== 'error';
 
       const cameraStatusMessage = cameraMessage(model.camera);
       const cameraMessageElement = getRequiredElement<HTMLElement>(root, '[data-ui="camera-message"]');

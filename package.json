@@ -5,7 +5,9 @@
   "description": "A tarot card drawing game using Three.js and MediaPipe Tasks Vision for gesture recognition.",
   "main": "index.html",
   "scripts": {
+    "predev": "node scripts/prepare-mediapipe-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/prepare-mediapipe-assets.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest",

@@ -199,10 +199,12 @@ export class CardView {
   async reveal(
     card: TarotCard,
     orientation: TarotOrientation,
+    preloadedTexture?: Texture,
   ): Promise<void> {
     this.assertUsable();
 
-    const texture = await this.textureLoader.loadAsync(card.image);
+    const texture =
+      preloadedTexture ?? await this.textureLoader.loadAsync(card.image);
     if (this.disposed) {
       texture.dispose();
       throw new Error('Cannot reveal a disposed card view');

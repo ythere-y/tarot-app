@@ -520,13 +520,12 @@ describe('createTarotApp', () => {
     app.dispose();
   });
 
-  it('recovers from a rejected reveal without consuming the card and permits another selection', async () => {
+  it('retries a rejected reveal in place without consuming or archiving the card', async () => {
     const firstScene = new FakeScene();
-    const secondScene = new FakeScene();
     firstScene.revealDeferred = new Deferred();
     const { app, view } = createHarnessWithScenes(
       () => 0,
-      [firstScene, secondScene],
+      [firstScene],
     );
     app.start();
 
@@ -540,17 +539,25 @@ describe('createTarotApp', () => {
     await flushAsync();
 
     expect(view.latest.snapshot).toMatchObject({
-      phase: { type: 'CAROUSEL' },
+      phase: { type: 'REVEALING' },
       remainingCount: 78,
       history: [],
     });
-    expect(view.latest.gesture.detail).toContain('失败');
-    expect(firstScene.disposeCalls).toBe(1);
-    expect(secondScene.cards).toHaveLength(78);
+    expect(view.latest.resource).toMatchObject({
+      status: 'error',
+      resource: 'card-face',
+    });
+    expect(firstScene.disposeCalls).toBe(0);
 
-    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
-    expect(secondScene.pickCalls).toBe(1);
-    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+    firstScene.revealDeferred = null;
+    view.actions.retryResource?.();
+    await flushAsync();
+    expect(firstScene.revealCalls).toHaveLength(2);
+    expect(view.latest.snapshot).toMatchObject({
+      phase: { type: 'READING' },
+      remainingCount: 78,
+      history: [],
+    });
     app.dispose();
   });
 

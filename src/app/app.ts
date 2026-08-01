@@ -9,6 +9,7 @@ import {
 } from '../gestures/classifier';
 import {
   GestureEngine,
+  type GestureEngineError,
   type GestureEngineFrame,
 } from '../gestures/gesture-engine';
 import {
@@ -25,7 +26,11 @@ import type {
   InterpretationResponse,
   InterpretationTopic,
 } from '../interpretation/types';
-import { TarotScene, type ReleaseResult } from '../scene/tarot-scene';
+import {
+  TarotScene,
+  type ReleaseResult,
+  type SceneResourceState,
+} from '../scene/tarot-scene';
 import { TAROT_CARDS } from '../tarot/cards';
 import type { TarotCard, TarotOrientation } from '../tarot/types';
 import {
@@ -34,12 +39,14 @@ import {
   type CameraViewStatus,
   type GestureViewStatus,
   type InputMode,
+  type ResourceViewStatus,
 } from '../ui/app-view';
 
 export interface GestureEnginePort {
   start(
     video: HTMLVideoElement,
     onFrame: (frame: GestureEngineFrame) => void,
+    onError?: (error: GestureEngineError) => void,
   ): Promise<void>;
   stop(): void;
 }
@@ -53,14 +60,21 @@ export interface TarotScenePort {
   releaseHeldCard(): Promise<ReleaseResult>;
   reveal(card: TarotCard, orientation: TarotOrientation): Promise<void>;
   archive(targetRect: DOMRect): Promise<void>;
+  retryFailedAssets?(): Promise<void>;
+  setSuspended?(suspended: boolean): void;
   resize(): void;
   dispose(): void;
+}
+
+export interface TarotSceneCallbacks {
+  readonly onResourceState?: (state: SceneResourceState) => void;
+  readonly onFatalError?: (error: Error) => void;
 }
 
 export interface TarotAppDependencies {
   readonly cards: readonly TarotCard[];
   readonly gestureEngine: GestureEnginePort;
-  readonly createScene: () => TarotScenePort;
+  readonly createScene: (callbacks?: TarotSceneCallbacks) => TarotScenePort;
   readonly createView: (root: HTMLElement) => AppView;
   readonly interpretationProvider: InterpretationProvider;
 }
@@ -93,7 +107,13 @@ export function createTarotApp({
   const gestureEngine =
     dependencies.gestureEngine ?? new GestureEngine();
   const createScene =
-    dependencies.createScene ?? (() => new TarotScene({ cards }));
+    dependencies.createScene ??
+    ((callbacks?: TarotSceneCallbacks) =>
+      new TarotScene({
+        cards,
+        onResourceState: callbacks?.onResourceState,
+        onFatalError: callbacks?.onFatalError,
+      }));
   const createView =
     dependencies.createView ?? ((viewRoot) => createAppView(viewRoot));
   const interpretationProvider =
@@ -107,6 +127,8 @@ export function createTarotApp({
   let webglAvailable = true;
   let inputMode: InputMode = 'gesture';
   let camera: CameraViewStatus = { status: 'idle' };
+  let resource: ResourceViewStatus = { status: 'idle' };
+  let cardBackError: Error | null = null;
   let gestureStatus = { ...DEFAULT_GESTURE_STATUS };
   let topic: InterpretationTopic = 'general';
   let interpretation: InterpretationResponse | null = null;
@@ -116,10 +138,12 @@ export function createTarotApp({
   let pointerFilter = createPointerFilter(
     gestureStability.pointerSmoothingAlpha,
   );
-  let releaseInFlight = false;
+  let releaseOperation: object | null = null;
+  let revealOperation: object | null = null;
   let lastCardsKey = '';
   let operationGeneration = 0;
   let cameraGeneration = 0;
+  let sceneGeneration = 0;
   let activePointerId: number | null = null;
 
   const render = (): void => {
@@ -134,6 +158,7 @@ export function createTarotApp({
       topic,
       gesture: gestureStatus,
       camera,
+      resource,
       inputMode,
       webglAvailable,
       cardCatalog: cards,
@@ -158,17 +183,103 @@ export function createTarotApp({
     store.dispatch(event);
   };
 
+  const handleSceneResourceState = (state: SceneResourceState): void => {
+    if (state.status === 'loading') {
+      cardBackError = null;
+      if (
+        resource.status === 'idle'
+        || resource.resource === state.resource
+      ) {
+        resource = {
+          status: 'loading',
+          resource: state.resource,
+          message: 'Loading the local card back…',
+        };
+      }
+    } else if (state.status === 'ready') {
+      cardBackError = null;
+      if (
+        resource.status !== 'idle'
+        && resource.resource === state.resource
+      ) {
+        resource = { status: 'idle' };
+      }
+    } else {
+      cardBackError = state.error;
+      if (
+        resource.status === 'idle'
+        || resource.resource === state.resource
+      ) {
+        resource = {
+          status: 'error',
+          resource: state.resource,
+          message: state.error.message,
+        };
+      }
+    }
+    render();
+  };
+
   const mountFreshScene = (): void => {
     if (view === null) {
       return;
     }
+    const generation = ++sceneGeneration;
     if (!webglAvailable) {
       scene = createFallbackScene();
       scene.mount(view.getSceneHost());
       return;
     }
 
-    const candidate = createScene();
+    const candidate = createScene({
+      onResourceState: (state) => {
+        if (!disposed && generation === sceneGeneration) {
+          handleSceneResourceState(state);
+        }
+      },
+      onFatalError: () => {
+        if (
+          disposed
+          || generation !== sceneGeneration
+          || view === null
+          || !webglAvailable
+        ) {
+          return;
+        }
+        sceneGeneration += 1;
+        releaseOperation = null;
+        revealOperation = null;
+        scene?.dispose();
+        scene = null;
+        webglAvailable = false;
+        inputMode = 'pointer';
+        resource = { status: 'idle' };
+        cardBackError = null;
+        lastCardsKey = '';
+        scene = createFallbackScene();
+        scene.mount(view.getSceneHost());
+        syncCards(store.getSnapshot());
+        render();
+        const snapshot = store.getSnapshot();
+        const result = snapshot.result;
+        const card =
+          result === null ? undefined : cardsById.get(result.cardId);
+        if (snapshot.phase.type === 'HOLDING') {
+          selectedCardId = null;
+          dispatch({ type: 'RELEASE_OUTSIDE' });
+        } else if (
+          snapshot.phase.type === 'REVEALING'
+          && result !== null
+          && card !== undefined
+        ) {
+          runReveal(result, card);
+        } else if (snapshot.phase.type === 'ARCHIVING') {
+          selectedCardId = null;
+          interpretation = null;
+          dispatch({ type: 'ARCHIVE_COMPLETE' });
+        }
+      },
+    });
     try {
       candidate.mount(view.getSceneHost());
       scene = candidate;
@@ -179,6 +290,7 @@ export function createTarotApp({
       scene = createFallbackScene();
       scene.mount(view.getSceneHost());
     }
+    scene.setSuspended?.(document.visibilityState === 'hidden');
   };
 
   const updatePointer = (
@@ -210,24 +322,29 @@ export function createTarotApp({
   const releaseSelection = async (): Promise<void> => {
     if (
       scene === null
-      || releaseInFlight
+      || releaseOperation !== null
       || store.getSnapshot().phase.type !== 'HOLDING'
     ) {
       return;
     }
-    releaseInFlight = true;
+    const operation = {};
+    const activeScene = scene;
+    releaseOperation = operation;
     const generation = operationGeneration;
     let result: ReleaseResult = null;
     try {
-      result = await scene.releaseHeldCard();
+      result = await activeScene.releaseHeldCard();
     } catch {
       result = 'returned';
     } finally {
-      releaseInFlight = false;
+      if (releaseOperation === operation) {
+        releaseOperation = null;
+      }
     }
     if (
       disposed
       || generation !== operationGeneration
+      || scene !== activeScene
       || store.getSnapshot().phase.type !== 'HOLDING'
     ) {
       return;
@@ -245,7 +362,10 @@ export function createTarotApp({
     selectedCardId = null;
     interpretation = null;
     topic = 'general';
-    releaseInFlight = false;
+    releaseOperation = null;
+    revealOperation = null;
+    resource = { status: 'idle' };
+    cardBackError = null;
     gestureKind = 'UNKNOWN';
     gestureStatus = failureDetail === undefined
       ? { ...DEFAULT_GESTURE_STATUS }
@@ -298,6 +418,71 @@ export function createTarotApp({
       .catch(() => undefined);
   };
 
+  const runReveal = (
+    result: DrawResult,
+    card: TarotCard,
+  ): void => {
+    if (scene === null || revealOperation !== null) {
+      return;
+    }
+    const operation = {};
+    const activeScene = scene;
+    revealOperation = operation;
+    resource = {
+      status: 'loading',
+      resource: 'card-face',
+      message: 'Loading the selected card face…',
+    };
+    render();
+    const generation = operationGeneration;
+    void activeScene
+      .reveal(card, result.orientation)
+      .then(() => {
+        if (revealOperation === operation) {
+          revealOperation = null;
+        }
+        if (
+          disposed
+          || generation !== operationGeneration
+          || scene !== activeScene
+          || store.getSnapshot().phase.type !== 'REVEALING'
+        ) {
+          return;
+        }
+        resource =
+          cardBackError === null
+            ? { status: 'idle' }
+            : {
+                status: 'error',
+                resource: 'card-back',
+                message: cardBackError.message,
+              };
+        dispatch({ type: 'FLIP_COMPLETE' });
+      })
+      .catch((error: unknown) => {
+        if (revealOperation === operation) {
+          revealOperation = null;
+        }
+        if (
+          disposed
+          || generation !== operationGeneration
+          || scene !== activeScene
+          || store.getSnapshot().phase.type !== 'REVEALING'
+        ) {
+          return;
+        }
+        resource = {
+          status: 'error',
+          resource: 'card-face',
+          message:
+            error instanceof Error && error.message.trim() !== ''
+              ? error.message
+              : 'The selected card face could not be loaded.',
+        };
+        render();
+      });
+  };
+
   const beginReveal = (): void => {
     if (
       scene === null
@@ -321,29 +506,49 @@ export function createTarotApp({
     }
     interpretation = null;
     requestInterpretation(result, topic);
-    const generation = operationGeneration;
-    void scene
-      .reveal(card, result.orientation)
-      .then(() => {
-        if (
-          disposed
-          || generation !== operationGeneration
-          || store.getSnapshot().phase.type !== 'REVEALING'
-        ) {
-          return;
-        }
-        dispatch({ type: 'FLIP_COMPLETE' });
-      })
-      .catch(() => {
-        if (
-          disposed
-          || generation !== operationGeneration
-          || store.getSnapshot().phase.type !== 'REVEALING'
-        ) {
-          return;
-        }
-        resetDraw('翻牌失败，未消耗牌卡，请重新选择');
+    runReveal(result, card);
+  };
+
+  const retryResource = (): void => {
+    if (scene === null || resource.status !== 'error') {
+      return;
+    }
+    if (resource.resource === 'card-back') {
+      cardBackError = null;
+      resource = {
+        status: 'loading',
+        resource: 'card-back',
+        message: 'Loading the local card back…',
+      };
+      render();
+      void scene.retryFailedAssets?.().catch((error: unknown) => {
+        resource = {
+          status: 'error',
+          resource: 'card-back',
+          message:
+            error instanceof Error && error.message.trim() !== ''
+              ? error.message
+              : 'The local card back could not be loaded.',
+        };
+        render();
       });
+      return;
+    }
+
+    const snapshot = store.getSnapshot();
+    const result = snapshot.result;
+    const card =
+      result === null ? undefined : cardsById.get(result.cardId);
+    if (
+      revealOperation !== null
+      || snapshot.phase.type !== 'REVEALING'
+      || result === null
+      || card === undefined
+    ) {
+      return;
+    }
+
+    runReveal(result, card);
   };
 
   const beginArchive = (): void => {
@@ -355,13 +560,15 @@ export function createTarotApp({
       return;
     }
     const generation = operationGeneration;
+    const activeScene = scene;
     const targetRect = view?.getHistoryTargetRect() ?? emptyRect();
-    void scene
+    void activeScene
       .archive(targetRect)
       .then(() => {
         if (
           disposed
           || generation !== operationGeneration
+          || scene !== activeScene
           || store.getSnapshot().phase.type !== 'ARCHIVING'
         ) {
           return;
@@ -374,6 +581,7 @@ export function createTarotApp({
         if (
           disposed
           || generation !== operationGeneration
+          || scene !== activeScene
           || store.getSnapshot().phase.type !== 'ARCHIVING'
         ) {
           return;
@@ -454,10 +662,25 @@ export function createTarotApp({
     camera = { status: 'requesting', expanded: true };
     render();
     void gestureEngine
-      .start(view.getVideoElement(), handleGestureFrame)
+      .start(
+        view.getVideoElement(),
+        handleGestureFrame,
+        (error) => {
+          if (disposed || generation !== cameraGeneration) {
+            return;
+          }
+          cameraGeneration += 1;
+          camera = {
+            status: 'error',
+            message: cameraErrorMessage(error),
+            expanded: true,
+          };
+          inputMode = 'pointer';
+          render();
+        },
+      )
       .then(() => {
         if (disposed || generation !== cameraGeneration) {
-          gestureEngine.stop();
           return;
         }
         camera = { status: 'ready', expanded: false };
@@ -614,6 +837,10 @@ export function createTarotApp({
     scene?.resize();
   };
 
+  const onVisibilityChange = (): void => {
+    scene?.setSuspended?.(document.visibilityState === 'hidden');
+  };
+
   return {
     start(): void {
       if (disposed || started) {
@@ -626,6 +853,7 @@ export function createTarotApp({
         retryCamera: startCamera,
         usePointerMode,
         selectTopic,
+        retryResource,
         reset: () => resetDraw(),
       });
 
@@ -647,6 +875,7 @@ export function createTarotApp({
         cancelPointerSelection,
       );
       window.addEventListener('resize', onResize);
+      document.addEventListener('visibilitychange', onVisibilityChange);
       dispatch({ type: 'START' });
       render();
     },
@@ -658,6 +887,7 @@ export function createTarotApp({
       disposed = true;
       operationGeneration += 1;
       cameraGeneration += 1;
+      sceneGeneration += 1;
       gestureEngine.stop();
       unsubscribe?.();
       unsubscribe = null;
@@ -676,6 +906,7 @@ export function createTarotApp({
         );
       }
       window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       scene?.dispose();
       scene = null;
       view?.dispose();

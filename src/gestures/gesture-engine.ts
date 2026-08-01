@@ -5,11 +5,24 @@ import {
 } from '@mediapipe/tasks-vision';
 import type { HandLandmark } from './classifier';
 
-const DEFAULT_WASM_BASE_PATH =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm';
-const DEFAULT_MODEL_ASSET_PATH =
-  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/' +
-  'hand_landmarker/float16/latest/hand_landmarker.task';
+export interface GestureAssetPaths {
+  readonly wasmBasePath: string;
+  readonly modelAssetPath: string;
+}
+
+export function resolveGestureAssetPaths(
+  applicationBaseUrl: string | URL,
+): GestureAssetPaths {
+  const baseUrl = new URL(applicationBaseUrl);
+  return {
+    wasmBasePath: new URL('mediapipe/wasm', baseUrl).href,
+    modelAssetPath:
+      new URL(
+        'mediapipe/models/hand_landmarker.task',
+        baseUrl,
+      ).href,
+  };
+}
 
 export type GestureEngineErrorCode =
   | 'PERMISSION_DENIED'
@@ -149,17 +162,23 @@ export class GestureEngine {
     }
     this.targetFrameIntervalMs = 1_000 / targetFps;
     this.cameraTimeoutMs = options.cameraTimeoutMs ?? 10_000;
+    const localAssets = resolveGestureAssetPaths(
+      typeof document === 'undefined'
+        ? new URL('http://localhost/')
+        : new URL('.', document.baseURI),
+    );
     this.dependencies =
       options.dependencies ??
       createDefaultDependencies(
-        options.wasmBasePath ?? DEFAULT_WASM_BASE_PATH,
-        options.modelAssetPath ?? DEFAULT_MODEL_ASSET_PATH,
+        options.wasmBasePath ?? localAssets.wasmBasePath,
+        options.modelAssetPath ?? localAssets.modelAssetPath,
       );
   }
 
   async start(
     video: HTMLVideoElement,
     onFrame: (frame: GestureEngineFrame) => void,
+    onError?: (error: GestureEngineError) => void,
   ): Promise<void> {
     this.stop();
     const session: EngineSession = {
@@ -216,7 +235,7 @@ export class GestureEngine {
 
     session.landmarker = landmarker;
     session.running = true;
-    this.scheduleFrame(session, onFrame);
+    this.scheduleFrame(session, onFrame, onError);
   }
 
   stop(): void {
@@ -260,6 +279,7 @@ export class GestureEngine {
   private scheduleFrame(
     session: EngineSession,
     onFrame: (frame: GestureEngineFrame) => void,
+    onError?: (error: GestureEngineError) => void,
   ): void {
     session.frameRequestId = this.dependencies.requestAnimationFrame(
       (frameTime) => {
@@ -272,10 +292,23 @@ export class GestureEngine {
             frameTime - session.lastInferenceFrameTime >=
               this.targetFrameIntervalMs)
         ) {
-          this.runInference(session, frameTime, onFrame);
+          try {
+            this.runInference(session, frameTime, onFrame);
+          } catch (error) {
+            if (!this.isCurrent(session)) return;
+            this.releaseSession(session);
+            onError?.(
+              new GestureEngineError(
+                'MODEL_ERROR',
+                'Hand tracking stopped unexpectedly',
+                error,
+              ),
+            );
+            return;
+          }
         }
         if (this.isCurrent(session) && session.running) {
-          this.scheduleFrame(session, onFrame);
+          this.scheduleFrame(session, onFrame, onError);
         }
       },
     );

@@ -33,6 +33,9 @@ export const CARD_BACK_URL = new URL(
   import.meta.url,
 ).href;
 
+const FACE_PRELOAD_BATCH_SIZE = 4;
+const FACE_PRELOAD_CONCURRENCY = 2;
+
 export interface TarotRenderer {
   readonly domElement: HTMLCanvasElement;
   setPixelRatio(pixelRatio: number): void;
@@ -42,6 +45,23 @@ export interface TarotRenderer {
 }
 
 export type ReleaseResult = 'placed' | 'returned' | null;
+
+export type SceneResource = 'card-back';
+
+export type SceneResourceState =
+  | {
+      readonly status: 'loading';
+      readonly resource: SceneResource;
+    }
+  | {
+      readonly status: 'ready';
+      readonly resource: SceneResource;
+    }
+  | {
+      readonly status: 'error';
+      readonly resource: SceneResource;
+      readonly error: Error;
+    };
 
 export interface TarotSceneOptions {
   readonly cards?: readonly TarotCard[];
@@ -53,11 +73,19 @@ export interface TarotSceneOptions {
   readonly cancelFrame?: (handle: number) => void;
   readonly now?: () => number;
   readonly onError?: (error: Error) => void;
+  readonly onFatalError?: (error: Error) => void;
+  readonly onResourceState?: (state: SceneResourceState) => void;
 }
 
 interface PendingAnimation {
-  handle: number;
-  reject: (error: Error) => void;
+  handle?: number;
+  elapsedMs: number;
+  lastFrameTime?: number;
+  readonly durationMs: number;
+  readonly update: (progress: number) => void;
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+  step: FrameRequestCallback;
 }
 
 export class TarotScene {
@@ -76,6 +104,8 @@ export class TarotScene {
   private readonly cancelFrame: (handle: number) => void;
   private readonly now: () => number;
   private readonly onError?: (error: Error) => void;
+  private readonly onFatalError?: (error: Error) => void;
+  private readonly onResourceState?: (state: SceneResourceState) => void;
   private readonly animate: CardAnimation;
   private readonly archiveParticles: ArchiveParticles;
   private readonly pendingAnimations = new Set<PendingAnimation>();
@@ -90,6 +120,15 @@ export class TarotScene {
   private hoveredId: string | null = null;
   private selectedId: string | null = null;
   private coverTexture: Texture | undefined;
+  private readonly preloadedFaces = new Map<string, Texture>();
+  private readonly faceLoads = new Map<string, Promise<void>>();
+  private facePreloadQueue: string[] = [];
+  private activeFacePreloads = 0;
+  private coverLoad: Promise<void> | undefined;
+  private coverSettled = false;
+  private cardBackFailed = false;
+  private suspended = false;
+  private fatalReported = false;
   private disposed = false;
 
   constructor(options: TarotSceneOptions = {}) {
@@ -106,6 +145,8 @@ export class TarotScene {
     this.cancelFrame = options.cancelFrame ?? defaultCancelFrame;
     this.now = options.now ?? (() => performance.now());
     this.onError = options.onError;
+    this.onFatalError = options.onFatalError;
+    this.onResourceState = options.onResourceState;
     this.animate =
       options.animate ??
       ((durationMs, update) => this.animateWithFrames(durationMs, update));
@@ -152,10 +193,14 @@ export class TarotScene {
     this.element = element;
     this.renderer = this.rendererFactory();
     this.renderer.setPixelRatio(this.quality.pixelRatio);
+    this.renderer.domElement.addEventListener(
+      'webglcontextlost',
+      this.handleContextLost,
+    );
     element.append(this.renderer.domElement);
     this.resize();
     void this.loadCardBack();
-    this.renderFrame = this.requestFrame(this.renderLoop);
+    this.startRenderLoop();
     return this;
   }
 
@@ -175,6 +220,7 @@ export class TarotScene {
       if (!uniqueIds.has(id)) {
         view.dispose();
         this.views.delete(id);
+        this.releasePreloadedFace(id);
         if (this.selectedId === id) {
           this.selectedId = null;
         }
@@ -198,6 +244,7 @@ export class TarotScene {
     this.order = [...ids];
     this.applyCarouselLayout(this.now());
     this.updateHoveredCard();
+    this.scheduleFacePreloads();
   }
 
   setPointer(point: PointerPoint): void {
@@ -287,7 +334,13 @@ export class TarotScene {
       throw new Error('Card must be placed in the center before reveal');
     }
 
-    await view.reveal(card, orientation);
+    const pendingFace = this.faceLoads.get(card.id);
+    if (pendingFace !== undefined) {
+      await pendingFace;
+    }
+    const preloadedTexture = this.preloadedFaces.get(card.id);
+    this.preloadedFaces.delete(card.id);
+    await view.reveal(card, orientation, preloadedTexture);
   }
 
   async archive(targetRect: DOMRect): Promise<void> {
@@ -331,6 +384,42 @@ export class TarotScene {
     this.renderer.setSize(width, height, false);
   }
 
+  setSuspended(suspended: boolean): void {
+    this.assertUsable();
+    if (this.suspended === suspended) {
+      return;
+    }
+    this.suspended = suspended;
+    if (suspended) {
+      if (this.renderFrame !== undefined) {
+        this.cancelFrame(this.renderFrame);
+        this.renderFrame = undefined;
+      }
+      for (const animation of this.pendingAnimations) {
+        if (animation.handle !== undefined) {
+          this.cancelFrame(animation.handle);
+          animation.handle = undefined;
+        }
+        animation.lastFrameTime = undefined;
+      }
+      return;
+    }
+    if (this.fatalReported) {
+      return;
+    }
+    this.startRenderLoop();
+    for (const animation of this.pendingAnimations) {
+      this.scheduleAnimation(animation);
+    }
+  }
+
+  retryFailedAssets(): Promise<void> {
+    this.assertUsable();
+    return this.cardBackFailed
+      ? this.loadCardBack()
+      : Promise.resolve();
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;
@@ -342,7 +431,9 @@ export class TarotScene {
       this.renderFrame = undefined;
     }
     for (const animation of this.pendingAnimations) {
-      this.cancelFrame(animation.handle);
+      if (animation.handle !== undefined) {
+        this.cancelFrame(animation.handle);
+      }
       animation.reject(new Error('Tarot scene was disposed'));
     }
     this.pendingAnimations.clear();
@@ -353,6 +444,11 @@ export class TarotScene {
     }
     this.views.clear();
     this.order = [];
+    for (const texture of this.preloadedFaces.values()) {
+      texture.dispose();
+    }
+    this.preloadedFaces.clear();
+    this.facePreloadQueue = [];
     this.coverTexture?.dispose();
     this.coverTexture = undefined;
     this.backMaterial.dispose();
@@ -360,6 +456,10 @@ export class TarotScene {
 
     if (this.renderer) {
       const canvas = this.renderer.domElement;
+      canvas.removeEventListener(
+        'webglcontextlost',
+        this.handleContextLost,
+      );
       this.renderer.dispose();
       canvas.remove();
       this.renderer = undefined;
@@ -370,15 +470,33 @@ export class TarotScene {
   }
 
   private readonly renderLoop: FrameRequestCallback = (time) => {
-    if (this.disposed || !this.renderer) {
+    this.renderFrame = undefined;
+    if (this.disposed || this.suspended || !this.renderer) {
       return;
     }
 
-    this.applyCarouselLayout(time);
-    this.updateHoveredCard();
-    this.renderer.render(this.scene, this.camera);
-    this.renderFrame = this.requestFrame(this.renderLoop);
+    try {
+      this.applyCarouselLayout(time);
+      this.updateHoveredCard();
+      this.renderer.render(this.scene, this.camera);
+    } catch (error) {
+      this.reportFatalError(error);
+      return;
+    }
+    this.startRenderLoop();
   };
+
+  private startRenderLoop(): void {
+    if (
+      this.disposed
+      || this.suspended
+      || !this.renderer
+      || this.renderFrame !== undefined
+    ) {
+      return;
+    }
+    this.renderFrame = this.requestFrame(this.renderLoop);
+  }
 
   private applyCarouselLayout(time: number): void {
     for (const transform of layoutCarousel(this.order, time)) {
@@ -459,27 +577,138 @@ export class TarotScene {
     return createRect(left, top, width, height);
   }
 
-  private async loadCardBack(): Promise<void> {
-    try {
-      const texture = await this.textureLoader.loadAsync(CARD_BACK_URL);
-      if (this.disposed) {
-        texture.dispose();
+  private loadCardBack(): Promise<void> {
+    if (this.coverLoad !== undefined) {
+      return this.coverLoad;
+    }
+    this.onResourceState?.({
+      status: 'loading',
+      resource: 'card-back',
+    });
+    const load = this.textureLoader
+      .loadAsync(CARD_BACK_URL)
+      .then((texture) => {
+        if (this.disposed) {
+          texture.dispose();
+          return;
+        }
+
+        texture.colorSpace = SRGBColorSpace;
+        this.coverTexture?.dispose();
+        this.coverTexture = texture;
+        this.backMaterial.map = texture;
+        this.backMaterial.color.set(0xffffff);
+        this.backMaterial.needsUpdate = true;
+        this.cardBackFailed = false;
+        this.onResourceState?.({
+          status: 'ready',
+          resource: 'card-back',
+        });
+      })
+      .catch((error: unknown) => {
+        const resourceError =
+          error instanceof Error
+            ? error
+            : new Error('Card back texture failed to load');
+        this.cardBackFailed = true;
+        this.backMaterial.map = null;
+        this.backMaterial.color.set(0x21172f);
+        this.backMaterial.needsUpdate = true;
+        this.onResourceState?.({
+          status: 'error',
+          resource: 'card-back',
+          error: resourceError,
+        });
+        this.reportError(resourceError);
+      })
+      .finally(() => {
+        this.coverLoad = undefined;
+        this.coverSettled = true;
+        this.scheduleFacePreloads();
+      });
+    this.coverLoad = load;
+    return load;
+  }
+
+  private scheduleFacePreloads(): void {
+    if (!this.coverSettled || this.disposed) {
+      return;
+    }
+    const desired = this.preloadWindow();
+    const desiredSet = new Set(desired);
+    for (const id of this.preloadedFaces.keys()) {
+      if (!desiredSet.has(id)) {
+        this.releasePreloadedFace(id);
+      }
+    }
+    this.facePreloadQueue = this.facePreloadQueue.filter((id) =>
+      desiredSet.has(id),
+    );
+    for (const id of desired) {
+      if (
+        !this.preloadedFaces.has(id)
+        && !this.faceLoads.has(id)
+        && !this.facePreloadQueue.includes(id)
+      ) {
+        this.facePreloadQueue.push(id);
+      }
+    }
+    this.pumpFacePreloads();
+  }
+
+  private preloadWindow(): readonly string[] {
+    return this.order.slice(0, FACE_PRELOAD_BATCH_SIZE);
+  }
+
+  private pumpFacePreloads(): void {
+    while (
+      !this.disposed
+      && this.activeFacePreloads < FACE_PRELOAD_CONCURRENCY
+      && this.facePreloadQueue.length > 0
+    ) {
+      const id = this.facePreloadQueue.shift();
+      if (id === undefined) {
         return;
       }
-
-      texture.colorSpace = SRGBColorSpace;
-      this.coverTexture?.dispose();
-      this.coverTexture = texture;
-      this.backMaterial.map = texture;
-      this.backMaterial.color.set(0xffffff);
-      this.backMaterial.needsUpdate = true;
-    } catch (error) {
-      this.reportError(
-        error instanceof Error
-          ? error
-          : new Error('Card back texture failed to load'),
-      );
+      this.activeFacePreloads += 1;
+      void this.preloadFace(id).finally(() => {
+        this.activeFacePreloads -= 1;
+        this.scheduleFacePreloads();
+      });
     }
+  }
+
+  private preloadFace(id: string): Promise<void> {
+    const existing = this.faceLoads.get(id);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const card = this.cardsById.get(id);
+    if (card === undefined) {
+      return Promise.resolve();
+    }
+    const load = this.textureLoader
+      .loadAsync(card.image)
+      .then((texture) => {
+        if (this.disposed || !this.preloadWindow().includes(id)) {
+          texture.dispose();
+          return;
+        }
+        texture.colorSpace = SRGBColorSpace;
+        this.releasePreloadedFace(id);
+        this.preloadedFaces.set(id, texture);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.faceLoads.delete(id);
+      });
+    this.faceLoads.set(id, load);
+    return load;
+  }
+
+  private releasePreloadedFace(id: string): void {
+    this.preloadedFaces.get(id)?.dispose();
+    this.preloadedFaces.delete(id);
   }
 
   private animateWithFrames(
@@ -492,32 +721,78 @@ export class TarotScene {
         return;
       }
 
-      const start = this.now();
       const pending: PendingAnimation = {
-        handle: 0,
+        elapsedMs: 0,
+        lastFrameTime: this.suspended ? undefined : this.now(),
+        durationMs,
+        update,
+        resolve,
         reject,
+        step: () => undefined,
       };
       const step: FrameRequestCallback = (time) => {
-        this.pendingAnimations.delete(pending);
+        pending.handle = undefined;
         if (this.disposed) {
+          this.pendingAnimations.delete(pending);
           reject(new Error('Tarot scene was disposed'));
           return;
         }
+        if (this.suspended) {
+          pending.lastFrameTime = undefined;
+          return;
+        }
 
+        if (pending.lastFrameTime === undefined) {
+          pending.lastFrameTime = time;
+        } else {
+          pending.elapsedMs += Math.max(0, time - pending.lastFrameTime);
+          pending.lastFrameTime = time;
+        }
         const progress =
-          durationMs <= 0 ? 1 : clamp((time - start) / durationMs, 0, 1);
+          durationMs <= 0
+            ? 1
+            : clamp(pending.elapsedMs / durationMs, 0, 1);
         update(progress);
         if (progress >= 1) {
+          this.pendingAnimations.delete(pending);
           resolve();
           return;
         }
 
-        pending.handle = this.requestFrame(step);
-        this.pendingAnimations.add(pending);
+        this.scheduleAnimation(pending);
       };
-      pending.handle = this.requestFrame(step);
+      pending.step = step;
       this.pendingAnimations.add(pending);
+      this.scheduleAnimation(pending);
     });
+  }
+
+  private scheduleAnimation(animation: PendingAnimation): void {
+    if (
+      this.disposed
+      || this.suspended
+      || animation.handle !== undefined
+      || !this.pendingAnimations.has(animation)
+    ) {
+      return;
+    }
+    animation.handle = this.requestFrame(animation.step);
+  }
+
+  private readonly handleContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.reportFatalError(new Error('WebGL context was lost'));
+  };
+
+  private reportFatalError(error: unknown): void {
+    if (this.disposed || this.fatalReported) {
+      return;
+    }
+    this.fatalReported = true;
+    this.setSuspended(true);
+    this.onFatalError?.(
+      error instanceof Error ? error : new Error('Tarot rendering failed'),
+    );
   }
 
   private reportError(error: unknown): void {

@@ -280,4 +280,29 @@ describe('GestureEngine', () => {
     });
     expect(harness.stopTrack).toHaveBeenCalledOnce();
   });
+
+  it('reports runtime inference failures and releases the active session', async () => {
+    const harness = createHarness();
+    const inferenceError = new Error('GPU delegate failed');
+    harness.dependencies.createLandmarker = vi.fn(async () => ({
+      detectForVideo: () => {
+        throw inferenceError;
+      },
+      close: harness.close,
+    }));
+    const onError = vi.fn();
+    const engine = new GestureEngine({ dependencies: harness.dependencies });
+    await engine.start(createVideo(), vi.fn(), onError);
+
+    runNextFrame(harness, 0);
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0]?.[0]).toMatchObject({
+      code: 'MODEL_ERROR',
+      cause: inferenceError,
+    });
+    expect(harness.callbacks.size).toBe(0);
+    expect(harness.close).toHaveBeenCalledOnce();
+    expect(harness.stopTrack).toHaveBeenCalledOnce();
+  });
 });
