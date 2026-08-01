@@ -50,7 +50,9 @@ const finishImmediately: CardAnimation = async (_durationMs, update) => {
   update(1);
 };
 
-function createRevealedView(): {
+function createRevealedView(
+  animate: CardAnimation = finishImmediately,
+): {
   view: CardView;
   geometry: PlaneGeometry;
   backMaterial: MeshBasicMaterial;
@@ -67,7 +69,7 @@ function createRevealedView(): {
       geometry,
       backMaterial,
       textureLoader,
-      animate: finishImmediately,
+      animate,
     }),
     geometry,
     backMaterial,
@@ -89,6 +91,85 @@ describe('archiveParticlePosition', () => {
 });
 
 describe('ArchiveParticles', () => {
+  it('fades and shrinks the central card while particles are moving', async () => {
+    const scene = new Scene();
+    const { view, geometry, backMaterial } = createRevealedView();
+    scene.add(view.object);
+    await view.reveal(CARD, 'upright');
+    let finishAnimation: (() => void) | undefined;
+    const animate: CardAnimation = (_durationMs, update) => {
+      update(0.35);
+      return new Promise<void>((resolve) => {
+        finishAnimation = () => {
+          update(1);
+          resolve();
+        };
+      });
+    };
+    const effect = new ArchiveParticles({
+      scene,
+      particleCount: 12,
+      animate,
+      random: () => 0.5,
+    });
+
+    const archive = effect.archive(view, new Vector3(-4, -2, 0), false);
+    await Promise.resolve();
+
+    expect(view.state).toBe('archiving');
+    expect(view.frontOpacity).toBeLessThan(1);
+    expect(view.object.scale.x).toBeLessThan(1);
+    expect(view.object.visible).toBe(true);
+
+    finishAnimation?.();
+    await archive;
+    effect.dispose();
+    view.dispose();
+    geometry.dispose();
+    backMaterial.dispose();
+  });
+
+  it('restores the revealed card when particle animation fails', async () => {
+    const scene = new Scene();
+    const { view, geometry, backMaterial } = createRevealedView();
+    scene.add(view.object);
+    await view.reveal(CARD, 'upright');
+    const animationError = new Error('archive animation failed');
+    let rejectAnimation: ((error: Error) => void) | undefined;
+    const animate: CardAnimation = (_durationMs, update) => {
+      update(0.4);
+      return new Promise<void>((_resolve, reject) => {
+        rejectAnimation = reject;
+      });
+    };
+    const effect = new ArchiveParticles({
+      scene,
+      particleCount: 12,
+      animate,
+      random: () => 0.5,
+    });
+
+    const archive = effect.archive(view, new Vector3(-4, -2, 0), false);
+    await Promise.resolve();
+    expect(view.state).toBe('archiving');
+    expect(view.frontOpacity).toBeLessThan(1);
+    expect(view.object.scale.x).toBeLessThan(1);
+
+    rejectAnimation?.(animationError);
+    await expect(archive).rejects.toBe(animationError);
+
+    expect(view.state).toBe('revealed');
+    expect(view.frontOpacity).toBe(1);
+    expect(view.object.scale.x).toBe(1);
+    expect(view.object.visible).toBe(true);
+    expect(scene.children.some((child) => child.type === 'Points')).toBe(false);
+
+    effect.dispose();
+    view.dispose();
+    geometry.dispose();
+    backMaterial.dispose();
+  });
+
   it('resolves after particles reach the target and releases effect resources', async () => {
     const scene = new Scene();
     const { view, geometry, backMaterial } = createRevealedView();
@@ -164,6 +245,53 @@ describe('ArchiveParticles', () => {
     expect(scene.children.some((child) => child.type === 'Points')).toBe(false);
     expect(view.frontOpacity).toBe(0);
     expect(view.object.visible).toBe(false);
+
+    effect.dispose();
+    view.dispose();
+    geometry.dispose();
+    backMaterial.dispose();
+  });
+
+  it('rejects a second reduced-motion archive while the first fade is active', async () => {
+    let animationCall = 0;
+    let finishFade: (() => void) | undefined;
+    const cardAnimation: CardAnimation = (_durationMs, update) => {
+      animationCall += 1;
+      if (animationCall === 2) {
+        return new Promise<void>((resolve) => {
+          finishFade = () => {
+            update(1);
+            resolve();
+          };
+        });
+      }
+      update(1);
+      return Promise.resolve();
+    };
+    const scene = new Scene();
+    const { view, geometry, backMaterial } = createRevealedView(cardAnimation);
+    scene.add(view.object);
+    await view.reveal(CARD, 'upright');
+    const effect = new ArchiveParticles({
+      scene,
+      particleCount: 12,
+      animate: finishImmediately,
+      random: () => 0.5,
+    });
+
+    const firstArchive = effect.archive(view, new Vector3(-4, -2, 0), true);
+    await Promise.resolve();
+    const secondOutcome = await effect
+      .archive(view, new Vector3(-4, -2, 0), true)
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    finishFade?.();
+    await firstArchive;
+
+    expect(secondOutcome).toBeInstanceOf(Error);
+    expect((secondOutcome as Error).message).toContain('already running');
 
     effect.dispose();
     view.dispose();

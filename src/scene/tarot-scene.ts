@@ -2,10 +2,12 @@ import {
   MeshBasicMaterial,
   PerspectiveCamera,
   PlaneGeometry,
+  Raycaster,
   Scene,
   SRGBColorSpace,
   TextureLoader,
   Vector3,
+  Vector2,
   WebGLRenderer,
   type Camera,
   type Texture,
@@ -77,6 +79,7 @@ export class TarotScene {
   private readonly animate: CardAnimation;
   private readonly archiveParticles: ArchiveParticles;
   private readonly pendingAnimations = new Set<PendingAnimation>();
+  private readonly raycaster = new Raycaster();
 
   private order: string[] = [];
   private element: HTMLElement | undefined;
@@ -221,7 +224,7 @@ export class TarotScene {
     }
 
     this.updateHoveredCard();
-    const id = this.hoveredId ?? this.order[0] ?? null;
+    const id = this.hoveredId;
     if (!id) {
       return null;
     }
@@ -388,25 +391,20 @@ export class TarotScene {
       return;
     }
 
-    let nearestId: string | null = null;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-    for (const id of this.order) {
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld();
+    this.raycaster.setFromCamera(
+      new Vector2(this.pointer.x * 2 - 1, 1 - this.pointer.y * 2),
+      this.camera,
+    );
+    const pickTargets = this.order.flatMap((id) => {
       const view = this.views.get(id);
-      if (!view) {
-        continue;
-      }
-      const projected = view.object.position.clone().project(this.camera);
-      const screenX = (projected.x + 1) / 2;
-      const screenY = (1 - projected.y) / 2;
-      const distance = Math.hypot(
-        screenX - this.pointer.x,
-        screenY - this.pointer.y,
-      );
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestId = id;
-      }
-    }
+      return view ? [view.pickTarget] : [];
+    });
+    const nearest = this.raycaster.intersectObjects(pickTargets, false)[0];
+    const nearestId =
+      this.order.find((id) => this.views.get(id)?.pickTarget === nearest?.object) ??
+      null;
 
     if (nearestId === this.hoveredId) {
       return;

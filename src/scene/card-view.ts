@@ -45,8 +45,15 @@ export type CardViewState =
   | 'placed'
   | 'revealing'
   | 'revealed'
+  | 'archiving'
   | 'archived'
   | 'disposed';
+
+interface ParticleArchiveSnapshot {
+  readonly scale: number;
+  readonly opacity: number;
+  readonly visible: boolean;
+}
 
 export class CardView {
   readonly id: string;
@@ -64,6 +71,7 @@ export class CardView {
   private viewState: CardViewState = 'carousel';
   private hoverAmount = 0;
   private hoverRevision = 0;
+  private particleArchiveSnapshot: ParticleArchiveSnapshot | undefined;
 
   constructor({
     id,
@@ -102,6 +110,10 @@ export class CardView {
 
   get frontOpacity(): number {
     return this.front?.material.opacity ?? 0;
+  }
+
+  get pickTarget(): Mesh {
+    return this.back;
   }
 
   applyCarouselTransform(transform: CarouselTransform): void {
@@ -230,14 +242,66 @@ export class CardView {
     this.viewState = 'archived';
   }
 
-  finishParticleArchive(): void {
+  startParticleArchive(): void {
     this.assertUsable();
-    if (!this.revealed) {
+    if (!this.front || !this.revealed) {
       throw new Error('Cannot archive a card before it is revealed');
     }
 
+    this.particleArchiveSnapshot = {
+      scale: this.object.scale.x,
+      opacity: this.front.material.opacity,
+      visible: this.object.visible,
+    };
+    this.viewState = 'archiving';
+  }
+
+  applyParticleArchiveProgress(progress: number): void {
+    this.assertUsable();
+    if (!this.front || !this.particleArchiveSnapshot) {
+      throw new Error('Particle archive has not started');
+    }
+
+    const clamped = Math.min(Math.max(progress, 0), 1);
+    const fadeProgress = Math.min(clamped / 0.7, 1);
+    this.front.material.opacity = lerp(
+      this.particleArchiveSnapshot.opacity,
+      0,
+      easeInOutCubic(fadeProgress),
+    );
+    this.object.scale.setScalar(
+      lerp(
+        this.particleArchiveSnapshot.scale,
+        this.particleArchiveSnapshot.scale * 0.18,
+        easeInOutCubic(clamped),
+      ),
+    );
+  }
+
+  finishParticleArchive(): void {
+    this.assertUsable();
+    if (!this.revealed || !this.particleArchiveSnapshot) {
+      throw new Error('Cannot archive a card before it is revealed');
+    }
+
+    this.applyParticleArchiveProgress(1);
     this.object.visible = false;
+    this.particleArchiveSnapshot = undefined;
     this.viewState = 'archived';
+  }
+
+  restoreParticleArchive(): void {
+    if (this.disposed || !this.particleArchiveSnapshot) {
+      return;
+    }
+
+    if (this.front) {
+      this.front.material.opacity = this.particleArchiveSnapshot.opacity;
+    }
+    this.object.scale.setScalar(this.particleArchiveSnapshot.scale);
+    this.object.visible = this.particleArchiveSnapshot.visible;
+    this.particleArchiveSnapshot = undefined;
+    this.viewState = 'revealed';
   }
 
   dispose(): void {

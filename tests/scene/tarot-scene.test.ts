@@ -78,6 +78,7 @@ function rect(
 
 function createScene(
   loadAsync: (url: string) => Promise<Texture> = async () => new Texture(),
+  cards: readonly TarotCard[] = [CARD],
 ): { scene: TarotScene; renderer: TestRenderer; host: HTMLDivElement } {
   const renderer = new TestRenderer();
   const host = document.createElement('div');
@@ -87,7 +88,7 @@ function createScene(
   });
   const textureLoader = { loadAsync } as Pick<TextureLoader, 'loadAsync'>;
   const scene = new TarotScene({
-    cards: [CARD],
+    cards,
     capabilities: {
       devicePixelRatio: 2,
       hardwareConcurrency: 8,
@@ -99,9 +100,20 @@ function createScene(
     animate: finishImmediately,
     requestFrame: () => 17,
     cancelFrame: () => undefined,
+    now: () => 0,
   });
   scene.mount(host);
   return { scene, renderer, host };
+}
+
+function makeCards(count: number): TarotCard[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...CARD,
+    id: `card-${index}`,
+    number: index,
+    nameEn: `Card ${index}`,
+    image: `/tarot_img/${index}.jpg`,
+  }));
 }
 
 describe('historyTargetToWorld', () => {
@@ -150,6 +162,35 @@ describe('TarotScene', () => {
 
     expect(scene.cardIds).toEqual([]);
     expect(scene.heldCardId).toBeNull();
+
+    scene.dispose();
+  });
+
+  it.each([
+    { count: 1, expected: ['card-0'] },
+    { count: 3, expected: ['card-1'] },
+    { count: 78, expected: ['card-19', 'card-20'] },
+  ])(
+    'picks a visible front-facing card at the center from $count cards',
+    ({ count, expected }) => {
+      const cards = makeCards(count);
+      const { scene } = createScene(undefined, cards);
+      scene.setCards(cards.map(({ id }) => id));
+      scene.setPointer({ x: 0.5, y: 0.5 });
+
+      expect(expected).toContain(scene.pickCard());
+
+      scene.dispose();
+    },
+  );
+
+  it('does not pick a card when the pointer ray misses every visible face', () => {
+    const cards = makeCards(78);
+    const { scene } = createScene(undefined, cards);
+    scene.setCards(cards.map(({ id }) => id));
+    scene.setPointer({ x: 0, y: 0 });
+
+    expect(scene.pickCard()).toBeNull();
 
     scene.dispose();
   });

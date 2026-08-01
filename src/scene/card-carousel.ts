@@ -23,6 +23,9 @@ export const DEFAULT_CAROUSEL_LAYOUT: CarouselLayoutOptions = {
   speedRadiansPerSecond: 0.08,
 };
 
+const COMPACT_CAROUSEL_LIMIT = 7;
+const COMPACT_CARD_SPACING = 1.3;
+
 export function layoutCarousel(
   ids: readonly string[],
   timeMs: number,
@@ -30,6 +33,9 @@ export function layoutCarousel(
 ): CarouselTransform[] {
   if (ids.length === 0) {
     return [];
+  }
+  if (ids.length <= COMPACT_CAROUSEL_LIMIT) {
+    return layoutCompactCarousel(ids);
   }
 
   const elapsedSeconds = Number.isFinite(timeMs) ? timeMs / 1_000 : 0;
@@ -52,6 +58,42 @@ export function layoutCarousel(
         z: Math.sin(angle) * 0.06,
       },
       scale: 0.82 + depth * 0.18,
+    };
+  });
+}
+
+function layoutCompactCarousel(
+  ids: readonly string[],
+): CarouselTransform[] {
+  if (ids.length === 1) {
+    return [
+      {
+        id: ids[0]!,
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: -0.04, y: 0, z: 0 },
+        scale: 1,
+      },
+    ];
+  }
+
+  const center = (ids.length - 1) / 2;
+  return ids.map((id, index) => {
+    const offset = index - center;
+    const distanceFromCenter = Math.abs(offset) / Math.max(center, 1);
+
+    return {
+      id,
+      position: {
+        x: offset * COMPACT_CARD_SPACING,
+        y: 0,
+        z: (1 - distanceFromCenter) * 0.16,
+      },
+      rotation: {
+        x: -0.04,
+        y: -offset * 0.12,
+        z: offset * -0.025,
+      },
+      scale: 1 - distanceFromCenter * 0.06,
     };
   });
 }

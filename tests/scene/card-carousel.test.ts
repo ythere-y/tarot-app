@@ -50,12 +50,37 @@ describe('layoutCarousel', () => {
     }
   });
 
-  it('advances the loop over time without changing card order', () => {
-    const initial = layoutCarousel(['alpha', 'beta', 'gamma'], 0);
-    const later = layoutCarousel(['alpha', 'beta', 'gamma'], 1_000);
+  it('advances the full loop over time without changing card order', () => {
+    const ids = cardIds(78);
+    const initial = layoutCarousel(ids, 0);
+    const later = layoutCarousel(ids, 1_000);
 
-    expect(later.map(({ id }) => id)).toEqual(['alpha', 'beta', 'gamma']);
+    expect(later.map(({ id }) => id)).toEqual(ids);
     expect(later[0]?.position).not.toEqual(initial[0]?.position);
+  });
+
+  it('centers a single card facing the camera', () => {
+    expect(layoutCarousel(['only-card'], 5_000)).toEqual([
+      {
+        id: 'only-card',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: -0.04, y: 0, z: 0 },
+        scale: 1,
+      },
+    ]);
+  });
+
+  it('keeps a small carousel centered and stably visible', () => {
+    const initial = layoutCarousel(cardIds(3), 0);
+    const later = layoutCarousel(cardIds(3), 30_000);
+
+    expect(later).toEqual(initial);
+    expect(initial.map(({ position }) => position.x)).toEqual([-1.3, 0, 1.3]);
+    for (const transform of initial) {
+      expect(Math.abs(transform.position.x)).toBeLessThanOrEqual(1.3);
+      expect(transform.position.z).toBeGreaterThanOrEqual(0);
+      expect(Math.abs(transform.rotation.y)).toBeLessThanOrEqual(0.12);
+    }
   });
 });
 

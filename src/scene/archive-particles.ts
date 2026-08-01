@@ -60,6 +60,7 @@ export class ArchiveParticles {
         material: PointsMaterial;
       }
     | undefined;
+  private archiveInProgress = false;
   private disposed = false;
 
   constructor({
@@ -85,56 +86,65 @@ export class ArchiveParticles {
     if (!card.isRevealed) {
       throw new Error('Cannot archive a card before it is revealed');
     }
-    if (this.active) {
+    if (this.archiveInProgress) {
       throw new Error('An archive animation is already running');
     }
 
-    if (reducedMotion || this.particleCount === 0) {
-      await card.fadeOut();
-      return;
-    }
-
-    const origin = {
-      x: card.object.position.x,
-      y: card.object.position.y,
-      z: card.object.position.z,
-    };
-    const seeds = this.createSeeds();
-    const geometry = new BufferGeometry();
-    const positionAttribute = new Float32BufferAttribute(
-      new Float32Array(this.particleCount * 3),
-      3,
-    );
-    const positions = positionAttribute.array as Float32Array;
-    geometry.setAttribute('position', positionAttribute);
-    const material = new PointsMaterial({
-      color: 0xd8b45a,
-      size: 0.065,
-      transparent: true,
-      opacity: 1,
-      depthWrite: false,
-      blending: AdditiveBlending,
-    });
-    const points = new Points(geometry, material);
-    points.name = 'tarot-archive-particles';
-    points.frustumCulled = false;
-    this.active = { points, geometry, material };
-    this.writePositions(positions, origin, target, seeds, 0);
-    positionAttribute.needsUpdate = true;
-    this.scene.add(points);
-
+    this.archiveInProgress = true;
     try {
-      await this.animate(760, (progress) => {
-        if (this.disposed) {
-          return;
-        }
-        this.writePositions(positions, origin, target, seeds, progress);
-        positionAttribute.needsUpdate = true;
-        material.opacity = 1 - clamp01(progress) ** 3;
+      if (reducedMotion || this.particleCount === 0) {
+        await card.fadeOut();
+        return;
+      }
+
+      const origin = {
+        x: card.object.position.x,
+        y: card.object.position.y,
+        z: card.object.position.z,
+      };
+      const seeds = this.createSeeds();
+      const geometry = new BufferGeometry();
+      const positionAttribute = new Float32BufferAttribute(
+        new Float32Array(this.particleCount * 3),
+        3,
+      );
+      const positions = positionAttribute.array as Float32Array;
+      geometry.setAttribute('position', positionAttribute);
+      const material = new PointsMaterial({
+        color: 0xd8b45a,
+        size: 0.065,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+        blending: AdditiveBlending,
       });
-      card.finishParticleArchive();
+      const points = new Points(geometry, material);
+      points.name = 'tarot-archive-particles';
+      points.frustumCulled = false;
+      this.active = { points, geometry, material };
+      this.writePositions(positions, origin, target, seeds, 0);
+      positionAttribute.needsUpdate = true;
+      this.scene.add(points);
+      card.startParticleArchive();
+
+      try {
+        await this.animate(760, (progress) => {
+          if (this.disposed) {
+            return;
+          }
+          this.writePositions(positions, origin, target, seeds, progress);
+          positionAttribute.needsUpdate = true;
+          material.opacity = 1 - clamp01(progress) ** 3;
+          card.applyParticleArchiveProgress(progress);
+        });
+        card.finishParticleArchive();
+      } catch (error) {
+        card.restoreParticleArchive();
+        throw error;
+      }
     } finally {
       this.releaseActive();
+      this.archiveInProgress = false;
     }
   }
 
