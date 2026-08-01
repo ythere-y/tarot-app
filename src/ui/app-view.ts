@@ -242,7 +242,7 @@ export function createAppView(root: HTMLElement): AppView {
         </button>
       </footer>
 
-      <section class="reset-confirmation" data-ui="reset-confirmation" role="alertdialog"
+      <dialog class="reset-confirmation" data-ui="reset-confirmation" role="alertdialog"
         aria-modal="true" aria-labelledby="reset-title-${id}" aria-describedby="reset-description-${id}" hidden>
         <div class="reset-confirmation__surface">
           <p class="eyebrow">New Cycle</p>
@@ -257,16 +257,33 @@ export function createAppView(root: HTMLElement): AppView {
             </button>
           </div>
         </div>
-      </section>
+      </dialog>
     </div>
   `;
 
   const sceneHost = getRequiredElement<HTMLElement>(root, '[data-ui="scene-host"]');
   const video = getRequiredElement<HTMLVideoElement>(root, '[data-ui="camera-video"]');
   const history = getRequiredElement<HTMLOListElement>(root, '[data-ui="history"]');
+  const readingTabs = getRequiredElement<HTMLElement>(root, '[role="tablist"]');
+  const readingTabPanel = getRequiredElement<HTMLElement>(root, '[role="tabpanel"]');
   const cameraPanel = getRequiredElement<HTMLElement>(root, '[data-ui="camera-panel"]');
   const cameraToggle = getRequiredElement<HTMLButtonElement>(root, '[data-action="toggle-camera"]');
-  const resetConfirmation = getRequiredElement<HTMLElement>(root, '[data-ui="reset-confirmation"]');
+  const resetConfirmation = getRequiredElement<HTMLDialogElement>(root, '[data-ui="reset-confirmation"]');
+  const resetTrigger = getRequiredElement<HTMLButtonElement>(root, '[data-action="request-reset"]');
+  const topicTabs = new Map<InterpretationTopic, HTMLButtonElement>();
+  for (const topic of READING_TOPICS) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'reading-tab';
+    tab.dataset.action = 'select-topic';
+    tab.dataset.topic = topic.value;
+    tab.id = `tarot-reading-tab-${id}-${topic.value}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', tabPanelId);
+    tab.textContent = topic.label;
+    topicTabs.set(topic.value, tab);
+    readingTabs.append(tab);
+  }
   let actions: AppViewActions = {};
   let fallback: Fallback2D | null = null;
   let cameraExpanded = false;
@@ -276,11 +293,48 @@ export function createAppView(root: HTMLElement): AppView {
     cameraToggle.setAttribute('aria-expanded', String(cameraExpanded));
   };
 
+  const setBackgroundInert = (inert: boolean): void => {
+    const siblings = resetConfirmation.parentElement?.children ?? [];
+    for (const sibling of siblings) {
+      if (!(sibling instanceof HTMLElement) || sibling === resetConfirmation) {
+        continue;
+      }
+      if (inert) {
+        sibling.setAttribute('inert', '');
+      } else {
+        sibling.removeAttribute('inert');
+      }
+    }
+  };
+
   const closeResetConfirmation = (): void => {
+    if (
+      resetConfirmation.open
+      && typeof resetConfirmation.close === 'function'
+    ) {
+      resetConfirmation.close();
+    } else {
+      resetConfirmation.removeAttribute('open');
+    }
     resetConfirmation.hidden = true;
+    setBackgroundInert(false);
+    resetTrigger.focus();
+  };
+
+  const openResetConfirmation = (): void => {
+    resetConfirmation.hidden = false;
+    setBackgroundInert(true);
+    if (
+      !resetConfirmation.open
+      && typeof resetConfirmation.showModal === 'function'
+    ) {
+      resetConfirmation.showModal();
+    } else {
+      resetConfirmation.setAttribute('open', '');
+    }
     getRequiredElement<HTMLButtonElement>(
-      root,
-      '[data-action="request-reset"]',
+      resetConfirmation,
+      '[data-action="confirm-reset"]',
     ).focus();
   };
 
@@ -317,14 +371,10 @@ export function createAppView(root: HTMLElement): AppView {
         updateCameraExpanded();
         break;
       case 'request-reset':
-        resetConfirmation.hidden = false;
-        getRequiredElement<HTMLButtonElement>(
-          resetConfirmation,
-          '[data-action="confirm-reset"]',
-        ).focus();
+        openResetConfirmation();
         break;
       case 'confirm-reset':
-        resetConfirmation.hidden = true;
+        closeResetConfirmation();
         actions.reset?.();
         break;
       case 'cancel-reset':
@@ -334,6 +384,25 @@ export function createAppView(root: HTMLElement): AppView {
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Tab' && !resetConfirmation.hidden) {
+      const focusable = Array.from(
+        resetConfirmation.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (
+        first !== undefined
+        && last !== undefined
+        && (event.shiftKey
+          ? document.activeElement === first
+          : document.activeElement === last)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+      return;
+    }
+
     const target = event.target;
     const tab = target instanceof Element
       ? target.closest<HTMLButtonElement>('[role="tab"]')
@@ -373,8 +442,14 @@ export function createAppView(root: HTMLElement): AppView {
     }
   };
 
+  const onResetCancel = (event: Event): void => {
+    event.preventDefault();
+    closeResetConfirmation();
+  };
+
   root.addEventListener('click', onClick);
   root.addEventListener('keydown', onKeyDown);
+  resetConfirmation.addEventListener('cancel', onResetCancel);
 
   return {
     render(model): void {
@@ -468,21 +543,17 @@ export function createAppView(root: HTMLElement): AppView {
       const meaning = getRequiredElement<HTMLElement>(root, '[data-ui="meaning"]');
       const keywords = getRequiredElement<HTMLElement>(root, '[data-ui="keywords"]');
       const guidance = getRequiredElement<HTMLUListElement>(root, '[data-ui="guidance"]');
-      const tabs = getRequiredElement<HTMLElement>(root, '[role="tablist"]');
-      tabs.replaceChildren();
 
       for (const topic of READING_TOPICS) {
-        const tab = document.createElement('button');
-        tab.type = 'button';
-        tab.className = 'reading-tab';
-        tab.dataset.action = 'select-topic';
-        tab.dataset.topic = topic.value;
-        tab.setAttribute('role', 'tab');
-        tab.setAttribute('aria-controls', tabPanelId);
+        const tab = topicTabs.get(topic.value);
+        if (tab === undefined) {
+          continue;
+        }
         tab.setAttribute('aria-selected', String(topic.value === model.topic));
         tab.tabIndex = topic.value === model.topic ? 0 : -1;
-        tab.textContent = topic.label;
-        tabs.append(tab);
+        if (topic.value === model.topic) {
+          readingTabPanel.setAttribute('aria-labelledby', tab.id);
+        }
       }
 
       if (model.currentCard === null) {
@@ -493,16 +564,23 @@ export function createAppView(root: HTMLElement): AppView {
         guidance.replaceChildren();
       } else {
         const cardMeaning = model.currentCard.meanings[orientation];
+        const interpretation = model.interpretation;
+        const matchingInterpretation =
+          interpretation?.cardId === model.currentCard.id
+          && interpretation.orientation === orientation
+          && interpretation.topic === model.topic
+            ? interpretation
+            : null;
         zhName.textContent = `${model.currentCard.nameZh} · ${ORIENTATION_COPY[orientation]}`;
         enName.textContent = model.currentCard.nameEn;
         keywords.textContent = cardMeaning.keywords.join(' · ');
         meaning.textContent =
-          model.interpretation?.topic === model.topic
-            ? model.interpretation.interpretation
+          matchingInterpretation !== null
+            ? matchingInterpretation.interpretation
             : cardMeaning[model.topic];
         guidance.replaceChildren(
-          ...(model.interpretation?.topic === model.topic
-            ? model.interpretation.guidance.map((item) => {
+          ...(matchingInterpretation !== null
+            ? matchingInterpretation.guidance.map((item) => {
                 const listItem = document.createElement('li');
                 listItem.textContent = item;
                 return listItem;
@@ -551,6 +629,7 @@ export function createAppView(root: HTMLElement): AppView {
     dispose(): void {
       root.removeEventListener('click', onClick);
       root.removeEventListener('keydown', onKeyDown);
+      resetConfirmation.removeEventListener('cancel', onResetCancel);
       fallback?.dispose();
       fallback = null;
       const stream = video.srcObject as MediaStream | null;

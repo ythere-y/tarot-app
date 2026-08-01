@@ -608,8 +608,19 @@ button:disabled {
   z-index: 20;
   inset: 0;
   display: grid;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
   padding: 1.25rem;
+  border: 0;
   place-items: center;
+  background: rgb(2 2 7 / 82%);
+  backdrop-filter: blur(10px);
+}
+
+.reset-confirmation::backdrop {
   background: rgb(2 2 7 / 82%);
   backdrop-filter: blur(10px);
 }

@@ -131,6 +131,52 @@ describe('app view', () => {
     expect(zhName?.compareDocumentPosition(enName as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it.each([
+    {
+      mismatch: 'card',
+      cardId: 'major-00-fool',
+      orientation: 'reversed' as const,
+    },
+    {
+      mismatch: 'orientation',
+      cardId: CARD.id,
+      orientation: 'upright' as const,
+    },
+  ])('ignores an interpretation for a stale $mismatch result', ({ cardId, orientation }) => {
+    const root = createRoot();
+    const view = createAppView(root);
+
+    view.render(createModel({
+      currentCard: CARD,
+      snapshot: {
+        phase: { type: 'READING' },
+        remainingCards: [CARD],
+        remainingCount: 78,
+        result: {
+          cardId: CARD.id,
+          orientation: 'reversed',
+          drawnAt: Date.UTC(2026, 7, 1),
+        },
+        history: [],
+      },
+      interpretation: {
+        cardId,
+        cardName: '旧牌',
+        topic: 'general',
+        orientation,
+        interpretation: '这是上一张牌的陈旧解读。',
+        guidance: ['不应显示'],
+        source: 'standard',
+      },
+    }));
+
+    expect(root.querySelector('[data-ui="meaning"]')?.textContent)
+      .toContain('外界噪音盖过了你的直觉');
+    expect(root.querySelector('[data-ui="meaning"]')?.textContent)
+      .not.toContain('陈旧解读');
+    expect(root.querySelector('[data-ui="guidance"]')?.childElementCount).toBe(0);
+  });
+
   it('exposes retry and mouse/touch actions when the camera fails', () => {
     const root = createRoot();
     const view = createAppView(root);
@@ -240,6 +286,62 @@ describe('app view', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('uses a native dialog and cycles focus across reset actions', () => {
+    const root = createRoot();
+    const view = createAppView(root);
+    view.render(createModel());
+
+    root.querySelector<HTMLButtonElement>('[data-action="request-reset"]')?.click();
+    const dialog = root.querySelector<HTMLDialogElement>('dialog[data-ui="reset-confirmation"]');
+    const confirm = dialog?.querySelector<HTMLButtonElement>('[data-action="confirm-reset"]');
+    const cancel = dialog?.querySelector<HTMLButtonElement>('[data-action="cancel-reset"]');
+
+    expect(dialog?.open).toBe(true);
+    cancel?.focus();
+    cancel?.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+    }));
+    expect(document.activeElement).toBe(confirm);
+
+    confirm?.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+    }));
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  it('restores the reset trigger after confirming and invokes reset once', () => {
+    const root = createRoot();
+    const view = createAppView(root);
+    const reset = vi.fn();
+    view.bind({ reset });
+    view.render(createModel());
+
+    const trigger = root.querySelector<HTMLButtonElement>('[data-action="request-reset"]');
+    trigger?.click();
+    root.querySelector<HTMLButtonElement>('[data-action="confirm-reset"]')?.click();
+
+    expect(document.activeElement).toBe(trigger);
+    expect(reset).toHaveBeenCalledOnce();
+  });
+
+  it('restores the reset trigger after cancelling without invoking reset', () => {
+    const root = createRoot();
+    const view = createAppView(root);
+    const reset = vi.fn();
+    view.bind({ reset });
+    view.render(createModel());
+
+    const trigger = root.querySelector<HTMLButtonElement>('[data-action="request-reset"]');
+    trigger?.click();
+    root.querySelector<HTMLButtonElement>('[data-action="cancel-reset"]')?.click();
+
+    expect(document.activeElement).toBe(trigger);
+    expect(reset).not.toHaveBeenCalled();
+  });
+
   it('keeps camera recovery actions expanded even when a stale model says collapsed', () => {
     const root = createRoot();
     const view = createAppView(root);
@@ -266,23 +368,29 @@ describe('app view', () => {
     expect(root.childElementCount).toBe(0);
   });
 
-  it('moves through reading tabs with arrow keys', () => {
+  it('keeps focus on the selected tab when its action synchronously renders the new model', () => {
     const root = createRoot();
     const view = createAppView(root);
-    const selectTopic = vi.fn();
-    view.bind({ selectTopic });
+    view.bind({
+      selectTopic(topic): void {
+        view.render(createModel({
+          currentCard: CARD,
+          topic,
+        }));
+      },
+    });
     view.render(createModel({ currentCard: CARD }));
 
     const general = root.querySelector<HTMLButtonElement>('[role="tab"][data-topic="general"]');
-    const love = root.querySelector<HTMLButtonElement>('[role="tab"][data-topic="love"]');
     general?.focus();
     general?.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'ArrowRight',
       bubbles: true,
     }));
 
-    expect(document.activeElement).toBe(love);
-    expect(selectTopic).toHaveBeenCalledWith('love');
+    const renderedLove = root.querySelector<HTMLButtonElement>('[role="tab"][data-topic="love"]');
+    expect(document.activeElement).toBe(renderedLove);
+    expect(renderedLove?.getAttribute('aria-selected')).toBe('true');
   });
 
   it('uses unique accessible title references for multiple view instances', () => {
@@ -299,5 +407,26 @@ describe('app view', () => {
     expect(firstTitleId).not.toBe(secondTitleId);
     expect(firstRoot.querySelector(`#${firstTitleId}`)).not.toBeNull();
     expect(secondRoot.querySelector(`#${secondTitleId}`)).not.toBeNull();
+  });
+
+  it('gives each tab an instance-scoped id and labels the panel with the selected tab', () => {
+    const firstRoot = createRoot();
+    const secondRoot = createRoot();
+    createAppView(firstRoot).render(createModel({
+      currentCard: CARD,
+      topic: 'career',
+    }));
+    createAppView(secondRoot).render(createModel({
+      currentCard: CARD,
+      topic: 'career',
+    }));
+
+    const firstTab = firstRoot.querySelector<HTMLButtonElement>('[role="tab"][data-topic="career"]');
+    const secondTab = secondRoot.querySelector<HTMLButtonElement>('[role="tab"][data-topic="career"]');
+    const panel = firstRoot.querySelector('[role="tabpanel"]');
+
+    expect(firstTab?.id).not.toBe('');
+    expect(firstTab?.id).not.toBe(secondTab?.id);
+    expect(panel?.getAttribute('aria-labelledby')).toBe(firstTab?.id);
   });
 });
