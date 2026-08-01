@@ -3,6 +3,7 @@ import {
   GestureEngine,
   type GestureEngineDependencies,
   type GestureEngineFrame,
+  type GestureLandmarker,
 } from '../../src/gestures/gesture-engine';
 
 interface EngineHarness {
@@ -62,6 +63,26 @@ function createVideo(): HTMLVideoElement {
     srcObject: null,
     play: vi.fn(async () => undefined),
   } as unknown as HTMLVideoElement;
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+  reject(reason: unknown): void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function createStream(stop: () => void): MediaStream {
+  return {
+    getTracks: () => [{ stop }],
+  } as unknown as MediaStream;
 }
 
 function runNextFrame(harness: EngineHarness, timestamp: number): void {
@@ -129,6 +150,79 @@ describe('GestureEngine', () => {
     expect(harness.close).toHaveBeenCalledOnce();
     expect(harness.stopTrack).toHaveBeenCalledOnce();
     expect(video.srcObject).toBeNull();
+  });
+
+  it('stops a camera stream that resolves after stop cancels startup', async () => {
+    const harness = createHarness();
+    const pendingCamera = createDeferred<MediaStream>();
+    const lateTrackStop = vi.fn();
+    harness.dependencies.getUserMedia = vi.fn(() => pendingCamera.promise);
+    const video = createVideo();
+    const engine = new GestureEngine({ dependencies: harness.dependencies });
+
+    const starting = engine.start(video, vi.fn());
+    engine.stop();
+    pendingCamera.resolve(createStream(lateTrackStop));
+    await starting;
+
+    expect(lateTrackStop).toHaveBeenCalledOnce();
+    expect(video.srcObject).toBeNull();
+    expect(harness.callbacks.size).toBe(0);
+  });
+
+  it('closes a model that resolves after stop cancels startup', async () => {
+    const harness = createHarness();
+    const pendingModel = createDeferred<GestureLandmarker>();
+    const lateModelClose = vi.fn();
+    harness.dependencies.createLandmarker = vi.fn(() => pendingModel.promise);
+    const video = createVideo();
+    const engine = new GestureEngine({ dependencies: harness.dependencies });
+
+    const starting = engine.start(video, vi.fn());
+    await vi.waitFor(() => {
+      expect(harness.dependencies.createLandmarker).toHaveBeenCalledOnce();
+    });
+    engine.stop();
+    expect(harness.stopTrack).toHaveBeenCalledOnce();
+    pendingModel.resolve({
+      detectForVideo: vi.fn(),
+      close: lateModelClose,
+    });
+    await starting;
+
+    expect(lateModelClose).toHaveBeenCalledOnce();
+    expect(video.srcObject).toBeNull();
+    expect(harness.callbacks.size).toBe(0);
+  });
+
+  it('prevents an older pending start from replacing the current session', async () => {
+    const harness = createHarness();
+    const firstCamera = createDeferred<MediaStream>();
+    const firstTrackStop = vi.fn();
+    const secondTrackStop = vi.fn();
+    const secondStream = createStream(secondTrackStop);
+    harness.dependencies.getUserMedia = vi
+      .fn()
+      .mockImplementationOnce(() => firstCamera.promise)
+      .mockImplementationOnce(async () => secondStream);
+    const firstVideo = createVideo();
+    const secondVideo = createVideo();
+    const firstOnFrame = vi.fn();
+    const secondOnFrame = vi.fn();
+    const engine = new GestureEngine({ dependencies: harness.dependencies });
+
+    const firstStart = engine.start(firstVideo, firstOnFrame);
+    await engine.start(secondVideo, secondOnFrame);
+    firstCamera.resolve(createStream(firstTrackStop));
+    await firstStart;
+    runNextFrame(harness, 0);
+
+    expect(firstTrackStop).toHaveBeenCalledOnce();
+    expect(secondTrackStop).not.toHaveBeenCalled();
+    expect(firstVideo.srcObject).toBeNull();
+    expect(secondVideo.srcObject).toBe(secondStream);
+    expect(firstOnFrame).not.toHaveBeenCalled();
+    expect(secondOnFrame).toHaveBeenCalledOnce();
   });
 
   it.each([

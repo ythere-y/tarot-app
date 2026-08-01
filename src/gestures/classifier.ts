@@ -9,9 +9,11 @@ export interface HandLandmark {
 export interface GestureThresholds {
   readonly pinchEnterThreshold: number;
   readonly pinchExitThreshold: number;
-  readonly fistFoldRatio: number;
+  readonly fistEnterFoldRatio: number;
+  readonly fistExitFoldRatio: number;
   readonly openExtensionRatio: number;
   readonly pinchLatched?: boolean;
+  readonly fistLatched?: boolean;
 }
 
 const FINGER_PIP_AND_TIP = [
@@ -67,7 +69,10 @@ export function classifyGesture(
       : distance(wrist, tip) / proximalDistance;
   });
 
-  if (extensionRatios.every((ratio) => ratio <= thresholds.fistFoldRatio)) {
+  const fistFoldRatio = thresholds.fistLatched
+    ? thresholds.fistExitFoldRatio
+    : thresholds.fistEnterFoldRatio;
+  if (extensionRatios.every((ratio) => ratio <= fistFoldRatio)) {
     return 'FIST';
   }
   if (extensionRatios.every((ratio) => ratio >= thresholds.openExtensionRatio)) {

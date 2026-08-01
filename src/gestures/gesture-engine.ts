@@ -61,6 +61,18 @@ export interface GestureEngineOptions {
   readonly dependencies?: GestureEngineDependencies;
 }
 
+interface EngineSession {
+  readonly generation: number;
+  readonly video: HTMLVideoElement;
+  stream?: MediaStream;
+  landmarker?: GestureLandmarker;
+  frameRequestId?: number;
+  lastInferenceFrameTime?: number;
+  lastCameraTimestamp?: number;
+  running: boolean;
+  cleaned: boolean;
+}
+
 function createDefaultDependencies(
   wasmBasePath: string,
   modelAssetPath: string,
@@ -127,13 +139,8 @@ export class GestureEngine {
   private readonly targetFrameIntervalMs: number;
   private readonly cameraTimeoutMs: number;
   private readonly dependencies: GestureEngineDependencies;
-  private landmarker: GestureLandmarker | undefined;
-  private stream: MediaStream | undefined;
-  private video: HTMLVideoElement | undefined;
-  private frameRequestId: number | undefined;
-  private lastInferenceFrameTime: number | undefined;
-  private lastCameraTimestamp: number | undefined;
-  private running = false;
+  private generation = 0;
+  private session: EngineSession | undefined;
 
   constructor(options: GestureEngineOptions = {}) {
     const targetFps = options.targetFps ?? 24;
@@ -155,46 +162,68 @@ export class GestureEngine {
     onFrame: (frame: GestureEngineFrame) => void,
   ): Promise<void> {
     this.stop();
-    this.video = video;
+    const session: EngineSession = {
+      generation: this.generation,
+      video,
+      running: false,
+      cleaned: false,
+    };
+    this.session = session;
 
+    let stream: MediaStream;
     try {
-      this.stream = await this.acquireCamera();
-      video.srcObject = this.stream;
-      await video.play();
+      stream = await this.acquireCamera();
     } catch (error) {
-      this.stop();
+      if (!this.isCurrent(session)) return;
+      this.releaseSession(session);
       throw mapCameraError(error);
     }
+    if (!this.isCurrent(session)) {
+      stopTracks(stream);
+      return;
+    }
+    session.stream = stream;
+    video.srcObject = stream;
 
     try {
-      this.landmarker = await this.dependencies.createLandmarker();
+      await video.play();
     } catch (error) {
-      this.stop();
+      if (!this.isCurrent(session)) return;
+      this.releaseSession(session);
+      throw mapCameraError(error);
+    }
+    if (!this.isCurrent(session)) {
+      this.releaseSession(session);
+      return;
+    }
+
+    let landmarker: GestureLandmarker;
+    try {
+      landmarker = await this.dependencies.createLandmarker();
+    } catch (error) {
+      if (!this.isCurrent(session)) return;
+      this.releaseSession(session);
       throw new GestureEngineError(
         'MODEL_ERROR',
         'The hand landmark model could not be loaded',
         error,
       );
     }
+    if (!this.isCurrent(session)) {
+      landmarker.close();
+      return;
+    }
 
-    this.running = true;
-    this.scheduleFrame(onFrame);
+    session.landmarker = landmarker;
+    session.running = true;
+    this.scheduleFrame(session, onFrame);
   }
 
   stop(): void {
-    this.running = false;
-    if (this.frameRequestId !== undefined) {
-      this.dependencies.cancelAnimationFrame(this.frameRequestId);
-      this.frameRequestId = undefined;
-    }
-    this.landmarker?.close();
-    this.landmarker = undefined;
-    if (this.stream) stopTracks(this.stream);
-    this.stream = undefined;
-    if (this.video) this.video.srcObject = null;
-    this.video = undefined;
-    this.lastInferenceFrameTime = undefined;
-    this.lastCameraTimestamp = undefined;
+    this.generation += 1;
+    const session = this.session;
+    this.session = undefined;
+    if (session) this.releaseSession(session);
   }
 
   private async acquireCamera(): Promise<MediaStream> {
@@ -229,47 +258,78 @@ export class GestureEngine {
   }
 
   private scheduleFrame(
+    session: EngineSession,
     onFrame: (frame: GestureEngineFrame) => void,
   ): void {
-    this.frameRequestId = this.dependencies.requestAnimationFrame(
+    session.frameRequestId = this.dependencies.requestAnimationFrame(
       (frameTime) => {
-        this.frameRequestId = undefined;
-        if (!this.running) return;
+        session.frameRequestId = undefined;
+        if (!this.isCurrent(session) || !session.running) return;
 
         if (
           this.dependencies.getVisibilityState() !== 'hidden' &&
-          (this.lastInferenceFrameTime === undefined ||
-            frameTime - this.lastInferenceFrameTime >=
+          (session.lastInferenceFrameTime === undefined ||
+            frameTime - session.lastInferenceFrameTime >=
               this.targetFrameIntervalMs)
         ) {
-          this.runInference(frameTime, onFrame);
+          this.runInference(session, frameTime, onFrame);
         }
-        this.scheduleFrame(onFrame);
+        if (this.isCurrent(session) && session.running) {
+          this.scheduleFrame(session, onFrame);
+        }
       },
     );
   }
 
   private runInference(
+    session: EngineSession,
     frameTime: number,
     onFrame: (frame: GestureEngineFrame) => void,
   ): void {
-    const video = this.video;
-    const landmarker = this.landmarker;
+    const { video, landmarker } = session;
     if (!video || !landmarker) return;
 
-    this.lastInferenceFrameTime = frameTime;
+    session.lastInferenceFrameTime = frameTime;
     const videoTimestamp = video.currentTime * 1_000;
     const timestamp = Math.max(
       Number.isFinite(videoTimestamp) ? videoTimestamp : frameTime,
-      this.lastCameraTimestamp === undefined
+      session.lastCameraTimestamp === undefined
         ? Number.NEGATIVE_INFINITY
-        : this.lastCameraTimestamp + 0.001,
+        : session.lastCameraTimestamp + 0.001,
     );
-    this.lastCameraTimestamp = timestamp;
+    session.lastCameraTimestamp = timestamp;
     const result = landmarker.detectForVideo(video, timestamp);
     onFrame({
       landmarks: (result.landmarks[0] as readonly HandLandmark[] | undefined) ?? null,
       timestamp,
     });
+  }
+
+  private isCurrent(session: EngineSession): boolean {
+    return (
+      this.session === session &&
+      session.generation === this.generation &&
+      !session.cleaned
+    );
+  }
+
+  private releaseSession(session: EngineSession): void {
+    if (session.cleaned) return;
+    session.cleaned = true;
+    session.running = false;
+    if (session.frameRequestId !== undefined) {
+      this.dependencies.cancelAnimationFrame(session.frameRequestId);
+      session.frameRequestId = undefined;
+    }
+    session.landmarker?.close();
+    session.landmarker = undefined;
+    if (session.stream) {
+      stopTracks(session.stream);
+      if (session.video.srcObject === session.stream) {
+        session.video.srcObject = null;
+      }
+      session.stream = undefined;
+    }
+    if (this.session === session) this.session = undefined;
   }
 }

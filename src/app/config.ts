@@ -8,5 +8,7 @@ export const gestureStability = {
   lossGraceMs: 250,
   pinchEnterThreshold: 0.28,
   pinchExitThreshold: 0.36,
+  fistEnterFoldRatio: 0.92,
+  fistExitFoldRatio: 0.98,
   pointerSmoothingAlpha: 0.2,
 } as const;

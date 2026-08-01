@@ -1,4 +1,5 @@
 import type { GestureKind } from './classifier';
+import type { DrawPhase } from '../app/types';
 
 export type GestureSemanticEvent =
   | 'PINCH_STABLE'
@@ -7,7 +8,7 @@ export type GestureSemanticEvent =
 
 export interface GestureSample {
   readonly kind: GestureKind;
-  readonly phase?: string;
+  readonly phase?: DrawPhase['type'];
 }
 
 export interface GestureStabilizerConfig {
@@ -33,9 +34,25 @@ function normalizeSample(sample: GestureKind | GestureSample): GestureSample {
   return typeof sample === 'string' ? { kind: sample } : sample;
 }
 
+function assertValidConfig(config: GestureStabilizerConfig): void {
+  if (!Number.isInteger(config.stableFrames) || config.stableFrames < 1) {
+    throw new RangeError('stableFrames must be a positive integer');
+  }
+  for (const [name, value] of [
+    ['fistDwellMs', config.fistDwellMs],
+    ['openArchiveDwellMs', config.openArchiveDwellMs],
+    ['lossGraceMs', config.lossGraceMs],
+  ] as const) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new RangeError(`${name} must be finite and non-negative`);
+    }
+  }
+}
+
 export function createGestureStabilizer(
   config: GestureStabilizerConfig,
 ): GestureStabilizer {
+  assertValidConfig(config);
   let lastTimestamp = Number.NEGATIVE_INFINITY;
   let candidate: GestureKind = 'UNKNOWN';
   let candidateFrames = 0;
@@ -49,9 +66,7 @@ export function createGestureStabilizer(
     candidate = next;
     candidateFrames = 1;
     candidateStartedAt = timestamp;
-    confirmed = 'UNKNOWN';
     readingOpenStartedAt = undefined;
-    eventEmitted = false;
   }
 
   function resetRecognition(): void {
@@ -80,11 +95,16 @@ export function createGestureStabilizer(
         return { gesture: confirmed, event: null };
       }
 
-      lossStartedAt = undefined;
-      if (sample.kind === 'UNKNOWN') {
-        resetRecognition();
-        return { gesture: 'UNKNOWN', event: null };
+      if (lossStartedAt !== undefined) {
+        const pausedDuration = timestamp - lossStartedAt;
+        if (candidateStartedAt !== undefined) {
+          candidateStartedAt += pausedDuration;
+        }
+        if (readingOpenStartedAt !== undefined) {
+          readingOpenStartedAt += pausedDuration;
+        }
       }
+      lossStartedAt = undefined;
 
       if (sample.kind !== candidate) {
         resetCandidate(sample.kind, timestamp);
@@ -99,14 +119,22 @@ export function createGestureStabilizer(
       }
 
       if (candidateFrames >= config.stableFrames) {
-        confirmed = candidate;
+        if (confirmed !== candidate) {
+          confirmed = candidate;
+          eventEmitted = false;
+        }
       }
 
       let event: GestureSemanticEvent | null = null;
-      if (!eventEmitted && confirmed === 'PINCH') {
+      if (
+        !eventEmitted &&
+        candidate === confirmed &&
+        confirmed === 'PINCH'
+      ) {
         event = 'PINCH_STABLE';
       } else if (
         !eventEmitted &&
+        candidate === confirmed &&
         confirmed === 'FIST' &&
         candidateStartedAt !== undefined &&
         timestamp - candidateStartedAt >= config.fistDwellMs
@@ -114,6 +142,7 @@ export function createGestureStabilizer(
         event = 'FIST_DWELL_COMPLETE';
       } else if (
         !eventEmitted &&
+        candidate === confirmed &&
         confirmed === 'OPEN' &&
         sample.phase === 'READING' &&
         readingOpenStartedAt !== undefined &&

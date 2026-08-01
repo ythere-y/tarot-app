@@ -52,6 +52,10 @@ export const fistHand: readonly HandLandmark[] = palm.map((landmark, index) => {
   return foldedTips[index] ?? landmark;
 });
 
+export const nearFistHand: readonly HandLandmark[] = fistHand.map(
+  (landmark, index) => (index === 20 ? point(0.69, 0.568) : landmark),
+);
+
 export function scaleHand(
   landmarks: readonly HandLandmark[],
   scale: number,

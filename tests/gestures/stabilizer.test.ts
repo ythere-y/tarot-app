@@ -41,6 +41,25 @@ describe('createGestureStabilizer', () => {
     expect(stabilizer.update('PINCH', 120).event).toBe('PINCH_STABLE');
   });
 
+  it('keeps the confirmed gesture until the replacement is stable', () => {
+    const stabilizer = createStabilizer();
+    stabilizer.update('PINCH', 0);
+    stabilizer.update('PINCH', 20);
+    stabilizer.update('PINCH', 40);
+    stabilizer.update('PINCH', 60);
+
+    expect(stabilizer.update('OPEN', 80)).toEqual({
+      gesture: 'PINCH',
+      event: null,
+    });
+    expect(stabilizer.update('OPEN', 100).gesture).toBe('PINCH');
+    expect(stabilizer.update('OPEN', 120).gesture).toBe('PINCH');
+    expect(stabilizer.update('OPEN', 140)).toEqual({
+      gesture: 'OPEN',
+      event: null,
+    });
+  });
+
   it('requires a continuous 500ms fist dwell as well as stable frames', () => {
     const stabilizer = createStabilizer();
     stabilizer.update('FIST', 0);
@@ -76,7 +95,7 @@ describe('createGestureStabilizer', () => {
     });
   });
 
-  it('preserves dwell through a short hand loss within the grace period', () => {
+  it('pauses fist dwell during a short hand loss within the grace period', () => {
     const stabilizer = createStabilizer();
     stabilizer.update('FIST', 0);
     stabilizer.update('FIST', 100);
@@ -84,7 +103,31 @@ describe('createGestureStabilizer', () => {
 
     expect(stabilizer.update('LOST', 400).gesture).toBe('UNKNOWN');
     stabilizer.update('FIST', 450);
-    expect(stabilizer.update('FIST', 500).event).toBe('FIST_DWELL_COMPLETE');
+    expect(stabilizer.update('FIST', 500).event).toBeNull();
+    expect(stabilizer.update('FIST', 749).event).toBeNull();
+    expect(stabilizer.update('FIST', 750).event).toBe(
+      'FIST_DWELL_COMPLETE',
+    );
+  });
+
+  it('pauses reading open dwell during a short hand loss', () => {
+    const stabilizer = createStabilizer();
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 0);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 50);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 100);
+    stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 150);
+    stabilizer.update('LOST', 200);
+    stabilizer.update('LOST', 350);
+
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 400).event,
+    ).toBeNull();
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 499).event,
+    ).toBeNull();
+    expect(
+      stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 500).event,
+    ).toBe('OPEN_DWELL_COMPLETE');
   });
 
   it('emits LOST and resets pending dwell after the loss grace expires', () => {
@@ -111,5 +154,15 @@ describe('createGestureStabilizer', () => {
     stabilizer.update('OPEN', 10);
 
     expect(() => stabilizer.update('OPEN', 9)).toThrow(RangeError);
+  });
+
+  it.each([
+    [{ ...config, stableFrames: 0 }],
+    [{ ...config, stableFrames: 1.5 }],
+    [{ ...config, fistDwellMs: -1 }],
+    [{ ...config, openArchiveDwellMs: Number.POSITIVE_INFINITY }],
+    [{ ...config, lossGraceMs: Number.NaN }],
+  ])('rejects invalid stability configuration %#', (invalidConfig) => {
+    expect(() => createGestureStabilizer(invalidConfig)).toThrow(RangeError);
   });
 });

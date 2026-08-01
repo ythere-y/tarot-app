@@ -5,6 +5,7 @@ import {
 } from '../../src/gestures/classifier';
 import {
   fistHand,
+  nearFistHand,
   nearPinchHand,
   openHand,
   pinchHand,
@@ -14,7 +15,8 @@ import {
 const thresholds: GestureThresholds = {
   pinchEnterThreshold: 0.28,
   pinchExitThreshold: 0.36,
-  fistFoldRatio: 0.92,
+  fistEnterFoldRatio: 0.92,
+  fistExitFoldRatio: 0.98,
   openExtensionRatio: 1.08,
 };
 
@@ -38,6 +40,16 @@ describe('classifyGesture', () => {
         pinchLatched: true,
       }),
     ).toBe('PINCH');
+  });
+
+  it('uses the wider fold threshold only while fist is latched', () => {
+    expect(classifyGesture(nearFistHand, thresholds)).not.toBe('FIST');
+    expect(
+      classifyGesture(nearFistHand, {
+        ...thresholds,
+        fistLatched: true,
+      }),
+    ).toBe('FIST');
   });
 
   it('reports LOST for no hand and UNKNOWN for malformed landmarks', () => {
