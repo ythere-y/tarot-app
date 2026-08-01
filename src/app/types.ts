@@ -18,6 +18,7 @@ export type DrawEvent =
   | { type: 'FIST_DWELL_COMPLETE'; cardId?: string }
   | { type: 'FLIP_COMPLETE' }
   | { type: 'OPEN_DWELL_COMPLETE' }
+  | { type: 'DRAW_FAILED' }
   | { type: 'ARCHIVE_COMPLETE'; isFinalCard?: boolean };
 
 export interface DrawHistoryItem {

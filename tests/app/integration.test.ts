@@ -23,15 +23,21 @@ import { fistHand, openHand, pinchHand } from '../gestures/fixtures';
 class Deferred<T = void> {
   readonly promise: Promise<T>;
   private resolvePromise!: (value: T | PromiseLike<T>) => void;
+  private rejectPromise!: (reason?: unknown) => void;
 
   constructor() {
-    this.promise = new Promise<T>((resolve) => {
+    this.promise = new Promise<T>((resolve, reject) => {
       this.resolvePromise = resolve;
+      this.rejectPromise = reject;
     });
   }
 
   resolve(value: T extends void ? undefined : T = undefined as T extends void ? undefined : T): void {
     this.resolvePromise(value as T);
+  }
+
+  reject(reason: unknown): void {
+    this.rejectPromise(reason);
   }
 }
 
@@ -452,6 +458,29 @@ describe('createTarotApp', () => {
     app.dispose();
   });
 
+  it('returns a gesture-held card before pointer mode takes ownership', async () => {
+    const { app, engine, scene, view } = createHarness();
+    app.start();
+    view.actions.startCamera?.();
+    await flushAsync();
+    emitStable(engine, shiftedPinchAtCenter(), [0, 20, 40, 60]);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+
+    view.actions.usePointerMode?.();
+    await flushAsync();
+
+    expect(scene.releaseCalls).toBe(1);
+    expect(view.latest).toMatchObject({
+      inputMode: 'pointer',
+      snapshot: { phase: { type: 'CAROUSEL' } },
+    });
+
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    expect(scene.pickCalls).toBe(2);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+    app.dispose();
+  });
+
   it('replaces the scene when reset interrupts an archive so stale completion cannot remove new cards', async () => {
     const firstScene = new FakeScene();
     const secondScene = new FakeScene();
@@ -488,6 +517,124 @@ describe('createTarotApp', () => {
       remainingCount: 78,
       history: [],
     });
+    app.dispose();
+  });
+
+  it('recovers from a rejected reveal without consuming the card and permits another selection', async () => {
+    const firstScene = new FakeScene();
+    const secondScene = new FakeScene();
+    firstScene.revealDeferred = new Deferred();
+    const { app, view } = createHarnessWithScenes(
+      () => 0,
+      [firstScene, secondScene],
+    );
+    app.start();
+
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    dispatchPointer(view.host, 'pointerup', 'mouse', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    expect(view.latest.snapshot.phase.type).toBe('REVEALING');
+
+    firstScene.revealDeferred.reject(new Error('texture failed'));
+    await flushAsync();
+
+    expect(view.latest.snapshot).toMatchObject({
+      phase: { type: 'CAROUSEL' },
+      remainingCount: 78,
+      history: [],
+    });
+    expect(view.latest.gesture.detail).toContain('失败');
+    expect(firstScene.disposeCalls).toBe(1);
+    expect(secondScene.cards).toHaveLength(78);
+
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    expect(secondScene.pickCalls).toBe(1);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+    app.dispose();
+  });
+
+  it('recovers from a rejected archive without adding history and permits another selection', async () => {
+    const firstScene = new FakeScene();
+    const secondScene = new FakeScene();
+    firstScene.archiveDeferred = new Deferred();
+    const { app, view } = createHarnessWithScenes(
+      () => 0,
+      [firstScene, secondScene],
+    );
+    app.start();
+
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    dispatchPointer(view.host, 'pointerup', 'mouse', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    expect(view.latest.snapshot.phase.type).toBe('ARCHIVING');
+
+    firstScene.archiveDeferred.reject(new Error('archive failed'));
+    await flushAsync();
+
+    expect(view.latest.snapshot).toMatchObject({
+      phase: { type: 'CAROUSEL' },
+      remainingCount: 78,
+      history: [],
+    });
+    expect(view.latest.gesture.detail).toContain('失败');
+    expect(firstScene.disposeCalls).toBe(1);
+    expect(secondScene.cards).toHaveLength(78);
+
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    expect(secondScene.pickCalls).toBe(1);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+    app.dispose();
+  });
+
+  it('preserves an earlier archived reading when a later archive rejects', async () => {
+    const activeScene = new FakeScene();
+    const recoveryScene = new FakeScene();
+    const { app, view } = createHarnessWithScenes(
+      () => 0,
+      [activeScene, recoveryScene],
+    );
+    app.start();
+
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    dispatchPointer(view.host, 'pointerup', 'touch', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    await flushAsync();
+    const archivedCardId = TAROT_CARDS[0]!.id;
+    expect(view.latest.snapshot).toMatchObject({
+      remainingCount: 77,
+      history: [{ cardId: archivedCardId }],
+    });
+
+    activeScene.archiveDeferred = new Deferred();
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    dispatchPointer(view.host, 'pointerup', 'touch', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    expect(view.latest.snapshot.phase.type).toBe('ARCHIVING');
+
+    activeScene.archiveDeferred.reject(new Error('later archive failed'));
+    await flushAsync();
+
+    expect(view.latest.snapshot).toMatchObject({
+      phase: { type: 'CAROUSEL' },
+      remainingCount: 77,
+      result: null,
+      history: [{ cardId: archivedCardId }],
+    });
+    expect(recoveryScene.cards).toHaveLength(77);
+
+    dispatchPointer(view.host, 'pointerdown', 'touch', 50, 50);
+    expect(recoveryScene.pickCalls).toBe(1);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
     app.dispose();
   });
 

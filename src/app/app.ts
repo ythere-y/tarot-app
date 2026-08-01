@@ -240,6 +240,36 @@ export function createTarotApp({
     dispatch({ type: 'RELEASE_OUTSIDE' });
   };
 
+  const resetDraw = (failureDetail?: string): void => {
+    operationGeneration += 1;
+    selectedCardId = null;
+    interpretation = null;
+    topic = 'general';
+    releaseInFlight = false;
+    gestureKind = 'UNKNOWN';
+    gestureStatus = failureDetail === undefined
+      ? { ...DEFAULT_GESTURE_STATUS }
+      : {
+          label: '牌阵已安全重置',
+          detail: failureDetail,
+          progress: 0,
+        };
+    gestureStabilizer = createStabilizer();
+    pointerFilter = createPointerFilter(
+      gestureStability.pointerSmoothingAlpha,
+    );
+    scene?.dispose();
+    scene = null;
+    lastCardsKey = '';
+    mountFreshScene();
+    if (failureDetail === undefined) {
+      store.reset();
+      dispatch({ type: 'START' });
+    } else {
+      dispatch({ type: 'DRAW_FAILED' });
+    }
+  };
+
   const requestInterpretation = (
     result: DrawResult,
     requestedTopic: InterpretationTopic,
@@ -304,7 +334,16 @@ export function createTarotApp({
         }
         dispatch({ type: 'FLIP_COMPLETE' });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (
+          disposed
+          || generation !== operationGeneration
+          || store.getSnapshot().phase.type !== 'REVEALING'
+        ) {
+          return;
+        }
+        resetDraw('翻牌失败，未消耗牌卡，请重新选择');
+      });
   };
 
   const beginArchive = (): void => {
@@ -331,7 +370,16 @@ export function createTarotApp({
         interpretation = null;
         dispatch({ type: 'ARCHIVE_COMPLETE' });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (
+          disposed
+          || generation !== operationGeneration
+          || store.getSnapshot().phase.type !== 'ARCHIVING'
+        ) {
+          return;
+        }
+        resetDraw('归档失败，历史与余牌未变更，请重新选择');
+      });
   };
 
   const handleSemanticEvent = (
@@ -437,6 +485,13 @@ export function createTarotApp({
     cameraGeneration += 1;
     gestureEngine.stop();
     inputMode = 'pointer';
+    if (
+      scene !== null
+      && store.getSnapshot().phase.type === 'HOLDING'
+    ) {
+      scene.moveHeldCard({ x: 0, y: 0 });
+      void releaseSelection();
+    }
     render();
   };
 
@@ -451,25 +506,6 @@ export function createTarotApp({
       requestInterpretation(result, nextTopic);
     }
     render();
-  };
-
-  const reset = (): void => {
-    operationGeneration += 1;
-    selectedCardId = null;
-    interpretation = null;
-    topic = 'general';
-    releaseInFlight = false;
-    gestureKind = 'UNKNOWN';
-    gestureStabilizer = createStabilizer();
-    pointerFilter = createPointerFilter(
-      gestureStability.pointerSmoothingAlpha,
-    );
-    scene?.dispose();
-    scene = null;
-    lastCardsKey = '';
-    mountFreshScene();
-    store.reset();
-    dispatch({ type: 'START' });
   };
 
   const onPointerDown = (event: PointerEvent): void => {
@@ -590,7 +626,7 @@ export function createTarotApp({
         retryCamera: startCamera,
         usePointerMode,
         selectTopic,
-        reset,
+        reset: () => resetDraw(),
       });
 
       mountFreshScene();

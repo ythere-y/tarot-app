@@ -22,10 +22,16 @@ export function transitionDrawPhase(phase: DrawPhase, event: DrawEvent): DrawPha
     case 'PLACED':
       return event.type === 'FIST_DWELL_COMPLETE' ? { type: 'REVEALING' } : phase;
     case 'REVEALING':
+      if (event.type === 'DRAW_FAILED') {
+        return { type: 'CAROUSEL' };
+      }
       return event.type === 'FLIP_COMPLETE' ? { type: 'READING' } : phase;
     case 'READING':
       return event.type === 'OPEN_DWELL_COMPLETE' ? { type: 'ARCHIVING' } : phase;
     case 'ARCHIVING':
+      if (event.type === 'DRAW_FAILED') {
+        return { type: 'CAROUSEL' };
+      }
       if (event.type !== 'ARCHIVE_COMPLETE') {
         return phase;
       }

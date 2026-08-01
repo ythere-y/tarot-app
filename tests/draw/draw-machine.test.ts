@@ -63,6 +63,15 @@ describe('draw phase transitions', () => {
     ).toEqual({ type: 'COMPLETE' });
   });
 
+  it.each(['REVEALING', 'ARCHIVING'] as const)(
+    'returns %s to the carousel when the current draw fails',
+    (type) => {
+      expect(
+        transition({ type }, { type: 'DRAW_FAILED' }),
+      ).toEqual({ type: 'CAROUSEL' });
+    },
+  );
+
   it('ignores invalid events by returning the same phase object', () => {
     const ready = initialDrawPhase();
 

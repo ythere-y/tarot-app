@@ -42,6 +42,13 @@ export function createDrawStore({
         result,
         snapshot.history,
       );
+    } else if (event.type === 'DRAW_FAILED') {
+      snapshot = createSnapshot(
+        snapshot.remainingCards,
+        phase,
+        null,
+        snapshot.history,
+      );
     } else if (event.type === 'ARCHIVE_COMPLETE') {
       snapshot = archiveResult(snapshot, phase);
     } else {

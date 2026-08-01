@@ -85,6 +85,22 @@ describe('draw store', () => {
     expect(new Set(snapshot.history.map((item) => item.cardId)).size).toBe(78);
   });
 
+  it('rolls back only the current failed draw and preserves archived history', () => {
+    const store = createDrawStore({ cards: TAROT_CARDS, random: () => 0 });
+
+    confirmCurrentCard(store);
+    archiveCurrentCard(store);
+    confirmCurrentCard(store);
+    store.dispatch({ type: 'DRAW_FAILED' });
+
+    expect(store.getSnapshot()).toMatchObject({
+      phase: { type: 'CAROUSEL' },
+      remainingCount: 77,
+      result: null,
+      history: [{ cardId: TAROT_CARDS[0]!.id }],
+    });
+  });
+
   it('notifies subscribers only for real state changes and reset restores the deck', () => {
     const store = createDrawStore({ cards: TAROT_CARDS, random: () => 0 });
     const received: number[] = [];
