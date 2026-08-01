@@ -122,6 +122,8 @@ export class TarotScene {
   private coverTexture: Texture | undefined;
   private readonly preloadedFaces = new Map<string, Texture>();
   private readonly faceLoads = new Map<string, Promise<void>>();
+  private readonly failedSpeculativeFaces = new Set<string>();
+  private readonly claimedFaces = new Set<string>();
   private facePreloadQueue: string[] = [];
   private activeFacePreloads = 0;
   private coverLoad: Promise<void> | undefined;
@@ -334,6 +336,8 @@ export class TarotScene {
       throw new Error('Card must be placed in the center before reveal');
     }
 
+    this.failedSpeculativeFaces.delete(card.id);
+    this.claimedFaces.add(card.id);
     const pendingFace = this.faceLoads.get(card.id);
     if (pendingFace !== undefined) {
       await pendingFace;
@@ -448,6 +452,8 @@ export class TarotScene {
       texture.dispose();
     }
     this.preloadedFaces.clear();
+    this.failedSpeculativeFaces.clear();
+    this.claimedFaces.clear();
     this.facePreloadQueue = [];
     this.coverTexture?.dispose();
     this.coverTexture = undefined;
@@ -649,6 +655,8 @@ export class TarotScene {
         !this.preloadedFaces.has(id)
         && !this.faceLoads.has(id)
         && !this.facePreloadQueue.includes(id)
+        && !this.failedSpeculativeFaces.has(id)
+        && !this.claimedFaces.has(id)
       ) {
         this.facePreloadQueue.push(id);
       }
@@ -698,7 +706,11 @@ export class TarotScene {
         this.releasePreloadedFace(id);
         this.preloadedFaces.set(id, texture);
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!this.disposed) {
+          this.failedSpeculativeFaces.add(id);
+        }
+      })
       .finally(() => {
         this.faceLoads.delete(id);
       });

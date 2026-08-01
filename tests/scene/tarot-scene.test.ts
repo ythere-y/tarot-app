@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import {
+  CARD_BACK_URL,
   TarotScene,
   historyTargetToWorld,
   type TarotRenderer,
@@ -116,6 +117,12 @@ function makeCards(count: number): TarotCard[] {
   }));
 }
 
+async function flushAsync(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe('historyTargetToWorld', () => {
   it('maps a lower-left history target to a finite point left of center', () => {
     const camera = new PerspectiveCamera(42, 4 / 3, 0.1, 100);
@@ -216,5 +223,115 @@ describe('TarotScene', () => {
     expect(scene.cardIds).toEqual([CARD.id]);
 
     scene.dispose();
+  });
+
+  it('does not loop a failed speculative face load and retries only on explicit reveals', async () => {
+    const faceError = new Error('face unavailable');
+    const rejectFaceLoads: Array<() => void> = [];
+    let faceAttempts = 0;
+    const { scene } = createScene((url) => {
+      if (url === CARD_BACK_URL) {
+        return Promise.resolve(new Texture());
+      }
+      faceAttempts += 1;
+      return new Promise<Texture>((_resolve, reject) => {
+        rejectFaceLoads.push(() => reject(faceError));
+      });
+    });
+    scene.setCards([CARD.id]);
+    await flushAsync();
+    expect(faceAttempts).toBe(1);
+
+    rejectFaceLoads[0]!();
+    await flushAsync();
+    scene.setCards([CARD.id]);
+    scene.setCards([CARD.id]);
+    await flushAsync();
+
+    expect(faceAttempts).toBe(1);
+
+    scene.setPointer({ x: 0.5, y: 0.5 });
+    scene.pickCard();
+    scene.moveHeldCard({ x: 0.5, y: 0.5 });
+    await scene.releaseHeldCard();
+    const revealing = expect(scene.reveal(CARD, 'upright')).rejects.toBe(
+      faceError,
+    );
+    await flushAsync();
+    expect(faceAttempts).toBe(2);
+    rejectFaceLoads[1]!();
+    await revealing;
+
+    expect(faceAttempts).toBe(2);
+    scene.setCards([CARD.id]);
+    await flushAsync();
+    expect(faceAttempts).toBe(2);
+
+    const retrying = expect(scene.reveal(CARD, 'upright')).rejects.toBe(
+      faceError,
+    );
+    await flushAsync();
+    expect(faceAttempts).toBe(3);
+    rejectFaceLoads[2]!();
+    await retrying;
+
+    expect(faceAttempts).toBe(3);
+    scene.dispose();
+  });
+
+  it('does not speculatively reload a face after its texture is claimed', async () => {
+    let faceAttempts = 0;
+    const { scene } = createScene(async (url) => {
+      if (url !== CARD_BACK_URL) {
+        faceAttempts += 1;
+      }
+      return new Texture();
+    });
+    scene.setCards([CARD.id]);
+    await flushAsync();
+    await flushAsync();
+    expect(faceAttempts).toBe(1);
+
+    scene.setPointer({ x: 0.5, y: 0.5 });
+    scene.pickCard();
+    scene.moveHeldCard({ x: 0.5, y: 0.5 });
+    await scene.releaseHeldCard();
+    await scene.reveal(CARD, 'upright');
+    scene.setCards([CARD.id]);
+    scene.setCards([CARD.id]);
+    await flushAsync();
+
+    expect(faceAttempts).toBe(1);
+    scene.dispose();
+  });
+
+  it('does not record a late speculative failure after disposal', async () => {
+    const faceError = new Error('late face failure');
+    let rejectFace!: (error: Error) => void;
+    let faceAttempts = 0;
+    const { scene } = createScene((url) => {
+      if (url === CARD_BACK_URL) {
+        return Promise.resolve(new Texture());
+      }
+      faceAttempts += 1;
+      return new Promise<Texture>((_resolve, reject) => {
+        rejectFace = reject;
+      });
+    });
+    scene.setCards([CARD.id]);
+    await flushAsync();
+    expect(faceAttempts).toBe(1);
+
+    scene.dispose();
+    rejectFace(faceError);
+    await flushAsync();
+
+    const failureState = (
+      scene as unknown as {
+        failedSpeculativeFaces: Set<string>;
+      }
+    ).failedSpeculativeFaces;
+    expect(failureState.size).toBe(0);
+    expect(faceAttempts).toBe(1);
   });
 });
