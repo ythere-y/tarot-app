@@ -19,12 +19,13 @@ describe('createGestureStabilizer', () => {
   it('confirms a pinch only after the configured consecutive frames', () => {
     const stabilizer = createStabilizer();
 
-    expect(stabilizer.update('PINCH', 0).event).toBeNull();
-    expect(stabilizer.update('PINCH', 20).event).toBeNull();
-    expect(stabilizer.update('PINCH', 40).event).toBeNull();
-    expect(stabilizer.update('PINCH', 60)).toEqual({
+    expect(stabilizer.update('PINCH', 0).progress).toBe(0.25);
+    expect(stabilizer.update('PINCH', 20).progress).toBe(0.5);
+    expect(stabilizer.update('PINCH', 40).progress).toBe(0.75);
+    expect(stabilizer.update('PINCH', 60)).toMatchObject({
       gesture: 'PINCH',
       event: 'PINCH_STABLE',
+      progress: 1,
     });
     expect(stabilizer.update('PINCH', 80).event).toBeNull();
   });
@@ -48,13 +49,13 @@ describe('createGestureStabilizer', () => {
     stabilizer.update('PINCH', 40);
     stabilizer.update('PINCH', 60);
 
-    expect(stabilizer.update('OPEN', 80)).toEqual({
+    expect(stabilizer.update('OPEN', 80)).toMatchObject({
       gesture: 'PINCH',
       event: null,
     });
     expect(stabilizer.update('OPEN', 100).gesture).toBe('PINCH');
     expect(stabilizer.update('OPEN', 120).gesture).toBe('PINCH');
-    expect(stabilizer.update('OPEN', 140)).toEqual({
+    expect(stabilizer.update('OPEN', 140)).toMatchObject({
       gesture: 'OPEN',
       event: null,
     });
@@ -66,10 +67,15 @@ describe('createGestureStabilizer', () => {
     stabilizer.update('FIST', 100);
     stabilizer.update('FIST', 200);
 
-    expect(stabilizer.update('FIST', 499).event).toBeNull();
-    expect(stabilizer.update('FIST', 500)).toEqual({
+    expect(stabilizer.update('FIST', 300).progress).toBe(0.6);
+    expect(stabilizer.update('FIST', 499)).toMatchObject({
+      event: null,
+      progress: 0.998,
+    });
+    expect(stabilizer.update('FIST', 500)).toMatchObject({
       gesture: 'FIST',
       event: 'FIST_DWELL_COMPLETE',
+      progress: 1,
     });
     expect(stabilizer.update('FIST', 700).event).toBeNull();
   });
@@ -89,9 +95,10 @@ describe('createGestureStabilizer', () => {
     expect(
       stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 799).event,
     ).toBeNull();
-    expect(stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 800)).toEqual({
+    expect(stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 800)).toMatchObject({
       gesture: 'OPEN',
       event: 'OPEN_DWELL_COMPLETE',
+      progress: 1,
     });
   });
 
@@ -138,7 +145,7 @@ describe('createGestureStabilizer', () => {
     stabilizer.update('FIST', 300);
     stabilizer.update('LOST', 301);
 
-    expect(stabilizer.update('FIST', 600)).toEqual({
+    expect(stabilizer.update('FIST', 600)).toMatchObject({
       gesture: 'UNKNOWN',
       event: null,
     });
@@ -161,7 +168,7 @@ describe('createGestureStabilizer', () => {
 
     expect(
       stabilizer.update({ kind: 'OPEN', phase: 'READING' }, 500),
-    ).toEqual({
+    ).toMatchObject({
       gesture: 'UNKNOWN',
       event: null,
     });
@@ -184,9 +191,10 @@ describe('createGestureStabilizer', () => {
     stabilizer.update('FIST', 100);
     stabilizer.update('LOST', 200);
 
-    expect(stabilizer.update('LOST', 451)).toEqual({
+    expect(stabilizer.update('LOST', 451)).toMatchObject({
       gesture: 'LOST',
       event: null,
+      progress: 0,
     });
     stabilizer.update('FIST', 500);
     stabilizer.update('FIST', 600);

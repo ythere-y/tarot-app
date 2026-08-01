@@ -400,6 +400,7 @@ export function createTarotApp({
         cardId: result.cardId,
         orientation: result.orientation,
         topic: requestedTopic,
+        locale: 'zh-CN',
       })
       .then((response) => {
         const current = store.getSnapshot().result;
@@ -638,7 +639,7 @@ export function createTarotApp({
       frame.timestamp,
     );
     gestureKind = update.gesture;
-    gestureStatus = statusForGesture(update.gesture);
+    gestureStatus = statusForGesture(update.gesture, update.progress);
     render();
 
     if (update.event !== null) {
@@ -653,11 +654,59 @@ export function createTarotApp({
     }
   };
 
+  const resetGestureRecognition = (): void => {
+    gestureKind = 'UNKNOWN';
+    gestureStatus = { ...DEFAULT_GESTURE_STATUS };
+    gestureStabilizer = createStabilizer();
+    pointerFilter = createPointerFilter(
+      gestureStability.pointerSmoothingAlpha,
+    );
+  };
+
+  const safelyReturnHeldCard = (): void => {
+    if (store.getSnapshot().phase.type !== 'HOLDING') {
+      return;
+    }
+    activePointerId = null;
+    if (scene === null) {
+      selectedCardId = null;
+      dispatch({ type: 'RELEASE_OUTSIDE' });
+      return;
+    }
+    scene.moveHeldCard({ x: 0, y: 0 });
+    void releaseSelection();
+  };
+
+  const stopGestureInput = (): void => {
+    cameraGeneration += 1;
+    gestureEngine.stop();
+    resetGestureRecognition();
+    inputMode = 'pointer';
+    safelyReturnHeldCard();
+  };
+
+  const handoffCameraFailure = (
+    error: unknown,
+    generation: number,
+  ): void => {
+    if (disposed || generation !== cameraGeneration) {
+      return;
+    }
+    stopGestureInput();
+    camera = {
+      status: 'error',
+      message: cameraErrorMessage(error),
+      expanded: true,
+    };
+    render();
+  };
+
   const startCamera = (): void => {
     if (disposed || !started || view === null) {
       return;
     }
     const generation = ++cameraGeneration;
+    resetGestureRecognition();
     inputMode = 'gesture';
     camera = { status: 'requesting', expanded: true };
     render();
@@ -665,19 +714,7 @@ export function createTarotApp({
       .start(
         view.getVideoElement(),
         handleGestureFrame,
-        (error) => {
-          if (disposed || generation !== cameraGeneration) {
-            return;
-          }
-          cameraGeneration += 1;
-          camera = {
-            status: 'error',
-            message: cameraErrorMessage(error),
-            expanded: true,
-          };
-          inputMode = 'pointer';
-          render();
-        },
+        (error) => handoffCameraFailure(error, generation),
       )
       .then(() => {
         if (disposed || generation !== cameraGeneration) {
@@ -688,16 +725,7 @@ export function createTarotApp({
         render();
       })
       .catch((error: unknown) => {
-        if (disposed || generation !== cameraGeneration) {
-          return;
-        }
-        camera = {
-          status: 'error',
-          message: cameraErrorMessage(error),
-          expanded: true,
-        };
-        inputMode = 'pointer';
-        render();
+        handoffCameraFailure(error, generation);
       });
   };
 
@@ -705,17 +733,29 @@ export function createTarotApp({
     if (disposed) {
       return;
     }
-    cameraGeneration += 1;
-    gestureEngine.stop();
-    inputMode = 'pointer';
-    if (
-      scene !== null
-      && store.getSnapshot().phase.type === 'HOLDING'
-    ) {
-      scene.moveHeldCard({ x: 0, y: 0 });
-      void releaseSelection();
-    }
+    stopGestureInput();
     render();
+  };
+
+  const advanceDraw = (): void => {
+    if (disposed || !started || scene === null) {
+      return;
+    }
+    const phase = store.getSnapshot().phase.type;
+    if (phase === 'CAROUSEL') {
+      if (inputMode !== 'pointer') {
+        usePointerMode();
+      }
+      updatePointer({ x: 0.5, y: 0.5 }, false);
+      beginSelection();
+    } else if (phase === 'HOLDING') {
+      scene.moveHeldCard({ x: 0.5, y: 0.5 });
+      void releaseSelection();
+    } else if (phase === 'PLACED') {
+      beginReveal();
+    } else if (phase === 'READING') {
+      beginArchive();
+    }
   };
 
   const selectTopic = (nextTopic: InterpretationTopic): void => {
@@ -838,7 +878,13 @@ export function createTarotApp({
   };
 
   const onVisibilityChange = (): void => {
-    scene?.setSuspended?.(document.visibilityState === 'hidden');
+    const hidden = document.visibilityState === 'hidden';
+    resetGestureRecognition();
+    if (hidden) {
+      safelyReturnHeldCard();
+    }
+    scene?.setSuspended?.(hidden);
+    render();
   };
 
   return {
@@ -852,6 +898,7 @@ export function createTarotApp({
         startCamera,
         retryCamera: startCamera,
         usePointerMode,
+        advanceDraw,
         selectTopic,
         retryResource,
         reset: () => resetDraw(),
@@ -961,7 +1008,10 @@ function pointerFromEvent(
   };
 }
 
-function statusForGesture(gesture: GestureKind): GestureViewStatus {
+function statusForGesture(
+  gesture: GestureKind,
+  progress: number,
+): GestureViewStatus {
   const labels: Record<GestureKind, string> = {
     OPEN: '张开手掌',
     PINCH: '捏合选牌',
@@ -972,7 +1022,7 @@ function statusForGesture(gesture: GestureKind): GestureViewStatus {
   return {
     label: labels[gesture],
     detail: gesture === 'LOST' ? '可继续使用鼠标或触屏' : undefined,
-    progress: gesture === 'UNKNOWN' || gesture === 'LOST' ? 0 : 1,
+    progress,
   };
 }
 

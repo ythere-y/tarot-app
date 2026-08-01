@@ -161,10 +161,10 @@ describe('app view', () => {
       },
       interpretation: {
         cardId,
-        cardName: '旧牌',
         topic: 'general',
         orientation,
-        interpretation: '这是上一张牌的陈旧解读。',
+        title: '旧牌',
+        summary: '这是上一张牌的陈旧解读。',
         guidance: ['不应显示'],
         source: 'standard',
       },
@@ -239,6 +239,117 @@ describe('app view', () => {
     const progress = root.querySelector('[role="progressbar"]');
     expect(progress?.getAttribute('aria-valuenow')).toBe('52');
     expect(progress?.getAttribute('aria-valuetext')).toBe('已确认 52%');
+  });
+
+  it.each(['Enter', ' '])('supports the %j key on the focused draw control', (key) => {
+    const root = createRoot();
+    const view = createAppView(root);
+    const advanceDraw = vi.fn();
+    view.bind({ advanceDraw });
+    view.render(createModel({
+      snapshot: {
+        phase: { type: 'CAROUSEL' },
+        remainingCards: [CARD],
+        remainingCount: 78,
+        result: null,
+        history: [],
+      },
+    }));
+
+    const control = root.querySelector<HTMLButtonElement>('[data-action="advance-draw"]');
+    control?.focus();
+    control?.dispatchEvent(new KeyboardEvent('keydown', {
+      key,
+      bubbles: true,
+      cancelable: true,
+    }));
+
+    expect(document.activeElement).toBe(control);
+    expect(control?.textContent).toContain('选择');
+    expect(advanceDraw).toHaveBeenCalledOnce();
+  });
+
+  it('updates and locks the draw control from the authoritative phase', () => {
+    const root = createRoot();
+    const view = createAppView(root);
+    view.render(createModel({
+      snapshot: {
+        phase: { type: 'HOLDING' },
+        remainingCards: [CARD],
+        remainingCount: 78,
+        result: null,
+        history: [],
+      },
+    }));
+
+    const control = root.querySelector<HTMLButtonElement>('[data-action="advance-draw"]');
+    expect(control?.textContent).toContain('放置');
+    expect(control?.disabled).toBe(false);
+
+    view.render(createModel({
+      snapshot: {
+        phase: { type: 'REVEALING' },
+        remainingCards: [CARD],
+        remainingCount: 78,
+        result: {
+          cardId: CARD.id,
+          orientation: 'upright',
+          drawnAt: Date.UTC(2026, 7, 1),
+        },
+        history: [],
+      },
+    }));
+    expect(control?.textContent).toContain('正在翻牌');
+    expect(control?.disabled).toBe(true);
+  });
+
+  it('restores draw-control focus after an animation lock releases', () => {
+    const root = createRoot();
+    const view = createAppView(root);
+    const placed = createModel({
+      snapshot: {
+        phase: { type: 'PLACED' },
+        remainingCards: [CARD],
+        remainingCount: 78,
+        result: null,
+        history: [],
+      },
+    });
+    view.render(placed);
+    const control = root.querySelector<HTMLButtonElement>('[data-action="advance-draw"]');
+    control?.focus();
+
+    view.render({
+      ...placed,
+      snapshot: {
+        ...placed.snapshot,
+        phase: { type: 'REVEALING' },
+      },
+    });
+    document.body.tabIndex = -1;
+    document.body.focus();
+    view.render({
+      ...placed,
+      snapshot: {
+        ...placed.snapshot,
+        phase: { type: 'READING' },
+      },
+    });
+
+    expect(control?.disabled).toBe(false);
+    expect(document.activeElement).toBe(control);
+    document.body.removeAttribute('tabindex');
+  });
+
+  it('states beside camera authorization that video stays local', () => {
+    const root = createRoot();
+    const view = createAppView(root);
+    view.render(createModel());
+
+    const start = root.querySelector('.command-bar [data-action="start-camera"]');
+    const privacy = root.querySelector('[data-ui="camera-privacy"]');
+    expect(start?.parentElement).toContain(privacy);
+    expect(privacy?.textContent?.trim()).toBe('摄像头仅在本地处理，不上传。');
   });
 
   it('explains the 2D fallback while keeping the current face and orientation', () => {

@@ -55,6 +55,7 @@ export interface AppViewActions {
   startCamera?: () => void;
   retryCamera?: () => void;
   usePointerMode?: () => void;
+  advanceDraw?: () => void;
   retryResource?: () => void;
   selectTopic?: (topic: InterpretationTopic) => void;
   reset?: () => void;
@@ -170,6 +171,7 @@ export function createAppView(root: HTMLElement): AppView {
   const tabPanelId = `tarot-reading-panel-${id}`;
   const historyTitleId = `tarot-history-title-${id}`;
   const cameraPanelId = `tarot-camera-panel-${id}`;
+  const keyboardHelpId = `tarot-keyboard-help-${id}`;
 
   root.classList.add('tarot-app');
   root.innerHTML = `
@@ -189,6 +191,11 @@ export function createAppView(root: HTMLElement): AppView {
       <main class="experience-grid">
         <section class="scene-stage" aria-label="塔罗抽牌星盘">
           <div class="scene-host" data-ui="scene-host"></div>
+          <button class="scene-keyboard-control" type="button"
+            data-action="advance-draw" aria-describedby="${keyboardHelpId}"></button>
+          <p class="sr-only" id="${keyboardHelpId}">
+            聚焦此按钮后，按 Enter 或空格依次选择、放置、确认和归档塔罗牌。
+          </p>
 
           <aside class="resource-status" data-ui="resource-status" hidden>
             <p data-ui="resource-message" role="status" aria-live="polite"></p>
@@ -217,6 +224,7 @@ export function createAppView(root: HTMLElement): AppView {
             <div class="camera-dock__panel" id="${cameraPanelId}" data-ui="camera-panel" hidden>
               <video data-ui="camera-video" muted playsinline aria-label="摄像头手势预览"></video>
               <p data-ui="camera-message" role="status" aria-live="polite"></p>
+              <p class="camera-dock__privacy">摄像头仅在本地处理，不上传。</p>
               <div class="camera-dock__actions" data-ui="camera-actions"></div>
             </div>
           </aside>
@@ -255,6 +263,9 @@ export function createAppView(root: HTMLElement): AppView {
         <button class="seal-button seal-button--primary" type="button" data-action="start-camera">
           ${APP_COPY.startCamera}
         </button>
+        <p class="command-bar__privacy" data-ui="camera-privacy">
+          摄像头仅在本地处理，不上传。
+        </p>
         <button class="seal-button" type="button" data-action="request-reset">
           ${APP_COPY.reset}
         </button>
@@ -305,6 +316,7 @@ export function createAppView(root: HTMLElement): AppView {
   let actions: AppViewActions = {};
   let fallback: Fallback2D | null = null;
   let cameraExpanded = false;
+  let restoreDrawControlFocus = false;
 
   const updateCameraExpanded = (): void => {
     cameraPanel.hidden = !cameraExpanded;
@@ -377,6 +389,9 @@ export function createAppView(root: HTMLElement): AppView {
       case 'use-pointer':
         actions.usePointerMode?.();
         break;
+      case 'advance-draw':
+        actions.advanceDraw?.();
+        break;
       case 'retry-resource':
         actions.retryResource?.();
         break;
@@ -405,6 +420,20 @@ export function createAppView(root: HTMLElement): AppView {
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    const eventTarget = event.target;
+    const drawControl = eventTarget instanceof Element
+      ? eventTarget.closest<HTMLButtonElement>('[data-action="advance-draw"]')
+      : null;
+    if (
+      drawControl !== null
+      && !drawControl.disabled
+      && (event.key === 'Enter' || event.key === ' ')
+    ) {
+      event.preventDefault();
+      actions.advanceDraw?.();
+      return;
+    }
+
     if (event.key === 'Tab' && !resetConfirmation.hidden) {
       const focusable = Array.from(
         resetConfirmation.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
@@ -507,6 +536,36 @@ export function createAppView(root: HTMLElement): AppView {
         getRequiredElement(root, '[data-ui="input-mode"]'),
         model.inputMode === 'gesture' ? APP_COPY.gestureMode : APP_COPY.pointerMode,
       );
+      const drawControl = getRequiredElement<HTMLButtonElement>(
+        root,
+        '[data-action="advance-draw"]',
+      );
+      const drawControlState: Readonly<Record<
+        DrawSnapshot['phase']['type'],
+        { readonly label: string; readonly disabled: boolean }
+      >> = {
+        READY: { label: '选择当前塔罗牌', disabled: false },
+        CAROUSEL: { label: '选择当前塔罗牌', disabled: false },
+        HOLDING: { label: '放置到中央揭示区', disabled: false },
+        PLACED: { label: '确认并翻开此牌', disabled: false },
+        REVEALING: { label: '正在翻牌，请稍候', disabled: true },
+        READING: { label: '归档此牌并继续', disabled: false },
+        ARCHIVING: { label: '正在归档，请稍候', disabled: true },
+        COMPLETE: { label: '本轮已完成，请重置牌阵', disabled: true },
+      };
+      const drawAction = drawControlState[model.snapshot.phase.type];
+      if (drawAction.disabled && document.activeElement === drawControl) {
+        restoreDrawControlFocus = true;
+      }
+      drawControl.textContent = drawAction.label;
+      drawControl.disabled = drawAction.disabled;
+      drawControl.setAttribute('aria-disabled', String(drawAction.disabled));
+      if (!drawAction.disabled && restoreDrawControlFocus) {
+        restoreDrawControlFocus = false;
+        if (document.activeElement === document.body) {
+          drawControl.focus();
+        }
+      }
 
       const resourceStatus = getRequiredElement<HTMLElement>(
         root,
@@ -620,7 +679,7 @@ export function createAppView(root: HTMLElement): AppView {
         keywords.textContent = cardMeaning.keywords.join(' · ');
         meaning.textContent =
           matchingInterpretation !== null
-            ? matchingInterpretation.interpretation
+            ? matchingInterpretation.summary
             : cardMeaning[model.topic];
         guidance.replaceChildren(
           ...(matchingInterpretation !== null

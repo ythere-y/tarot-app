@@ -2,19 +2,21 @@ export type InterpretationTopic = 'general' | 'love' | 'career' | 'wealth' | 'gr
 export type CardOrientation = 'upright' | 'reversed';
 
 export interface InterpretationRequest {
+  question?: string;
   cardId: string;
   topic: InterpretationTopic;
   orientation: CardOrientation;
+  locale: 'zh-CN';
 }
 
 export interface InterpretationResponse {
+  title: string;
+  summary: string;
+  guidance: string[];
+  source: 'standard' | 'ai';
   cardId: string;
-  cardName: string;
   topic: InterpretationTopic;
   orientation: CardOrientation;
-  interpretation: string;
-  guidance: string[];
-  source: 'standard';
 }
 
 export interface InterpretationProvider {

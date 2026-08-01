@@ -24,6 +24,8 @@
 
 鼠标与触屏备用流程：移动指针到牌面后按下并拖动，松开到揭示区；随后再次点击确认翻牌，阅读后再点击归档。摄像头错误面板提供“重试摄像头”和“使用鼠标 / 触屏”两个恢复选项。
 
+键盘等价流程：聚焦星盘上方的抽牌控制，使用 `Enter` 或空格依次完成选择、放置、确认翻牌和归档。翻牌与归档动画期间控制会锁定，完成后焦点仍保留在同一控制上。
+
 ## 本地开发
 
 ### 前置条件
@@ -50,6 +52,14 @@ npm run check
 npm run build
 npm run preview
 ```
+
+最小发布验收会重新构建生产产物，逐个请求 `dist/` 文件，并使用本机 Chrome/Chromium 在强制 2D 降级下完成一次键盘抽牌循环：
+
+```bash
+npm run acceptance:smoke
+```
+
+如浏览器不在常见安装路径，可把可执行文件绝对路径设为 `TAROT_CHROME_PATH`。
 
 ### 摄像头与本地模型
 
@@ -93,5 +103,7 @@ npm ci → npm run check → 上传 dist → 部署 GitHub Pages
 ## 资源与许可
 
 源代码：<https://github.com/Fengfengex/tarot-app>
+
+项目原创代码与文档采用 [MIT License](LICENSE)。MediaPipe、手部模型和塔罗牌面不因项目代码采用 MIT 而自动获得同一许可；完整边界及待确认的发布权见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)。在牌面与模型来源、再分发条款由仓库所有者核验之前，不应将这些资产描述为已经获得发布授权。
 
 塔罗牌义仅供娱乐与自我探索使用。

@@ -13,6 +13,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint .",
+    "acceptance:smoke": "npm run build && node scripts/verify-acceptance.mjs",
     "check": "npm run lint && npm run test:run && npm run build"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "@types/three": "^0.181.0",
     "eslint": "^9.39.5",
     "jsdom": "^27.4.0",
+    "playwright-core": "^1.62.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^7.3.6",
@@ -36,6 +38,6 @@
     "gesture",
     "game"
   ],
-  "author": "Your Name",
+  "author": "Fengfengex",
   "license": "MIT"
 }

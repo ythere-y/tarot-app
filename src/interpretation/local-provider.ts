@@ -17,13 +17,13 @@ export class LocalInterpretationProvider implements InterpretationProvider {
     const meaning = card.meanings[request.orientation];
 
     return {
-      cardId: card.id,
-      cardName: card.nameZh,
-      topic: request.topic,
-      orientation: request.orientation,
-      interpretation: meaning[request.topic],
+      title: `${card.nameZh} · ${request.orientation === 'upright' ? '正位' : '逆位'}`,
+      summary: meaning[request.topic],
       guidance: [...meaning.keywords],
       source: 'standard',
+      cardId: card.id,
+      topic: request.topic,
+      orientation: request.orientation,
     };
   }
 }

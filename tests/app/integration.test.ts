@@ -5,7 +5,10 @@ import {
   type GestureEnginePort,
   type TarotScenePort,
 } from '../../src/app/app';
-import type { GestureEngineFrame } from '../../src/gestures/gesture-engine';
+import {
+  GestureEngineError,
+  type GestureEngineFrame,
+} from '../../src/gestures/gesture-engine';
 import type {
   InterpretationProvider,
   InterpretationRequest,
@@ -46,25 +49,33 @@ class FakeGestureEngine implements GestureEnginePort {
   stopCalls = 0;
   startError: Error | null = null;
   private onFrame: ((frame: GestureEngineFrame) => void) | null = null;
+  private onError: ((error: GestureEngineError) => void) | null = null;
 
   async start(
     _video: HTMLVideoElement,
     onFrame: (frame: GestureEngineFrame) => void,
+    onError?: (error: GestureEngineError) => void,
   ): Promise<void> {
     this.startCalls += 1;
     if (this.startError !== null) {
       throw this.startError;
     }
     this.onFrame = onFrame;
+    this.onError = onError ?? null;
   }
 
   stop(): void {
     this.stopCalls += 1;
     this.onFrame = null;
+    this.onError = null;
   }
 
   emit(frame: GestureEngineFrame): void {
     this.onFrame?.(frame);
+  }
+
+  fail(error: GestureEngineError): void {
+    this.onError?.(error);
   }
 }
 
@@ -80,6 +91,7 @@ class FakeScene implements TarotScenePort {
   releaseCalls = 0;
   archiveCalls = 0;
   disposeCalls = 0;
+  readonly suspendedStates: boolean[] = [];
   mountError: Error | null = null;
   revealDeferred: Deferred | null = null;
   archiveDeferred: Deferred | null = null;
@@ -137,6 +149,10 @@ class FakeScene implements TarotScenePort {
     this.archiveCalls += 1;
     await this.archiveDeferred?.promise;
     this.heldId = null;
+  }
+
+  setSuspended(suspended: boolean): void {
+    this.suspendedStates.push(suspended);
   }
 
   resize(): void {}
@@ -206,10 +222,10 @@ class FakeProvider implements InterpretationProvider {
     const card = TAROT_CARDS.find(({ id }) => id === request.cardId)!;
     return {
       cardId: request.cardId,
-      cardName: card.nameZh,
       topic: request.topic,
       orientation: request.orientation,
-      interpretation: card.meanings[request.orientation][request.topic],
+      title: card.nameZh,
+      summary: card.meanings[request.orientation][request.topic],
       guidance: [...card.meanings[request.orientation].keywords],
       source: 'standard',
     };
@@ -306,12 +322,24 @@ function dispatchPointer(
   target.dispatchEvent(event);
 }
 
+function setDocumentVisibility(state: DocumentVisibilityState): void {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: state,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 async function flushAsync(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
 
 afterEach(() => {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  });
   document.body.replaceChildren();
 });
 
@@ -346,6 +374,7 @@ describe('createTarotApp', () => {
       cardId: TAROT_CARDS[0]!.id,
       topic: 'general',
       orientation: 'reversed',
+      locale: 'zh-CN',
     }]);
     expect(view.latest.snapshot.phase.type).toBe('REVEALING');
 
@@ -458,6 +487,79 @@ describe('createTarotApp', () => {
     app.dispose();
   });
 
+  it('does not accumulate fist dwell while the application is hidden', async () => {
+    const { app, engine, view } = createHarness();
+    app.start();
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    dispatchPointer(view.host, 'pointerup', 'mouse', 50, 50);
+    await flushAsync();
+    expect(view.latest.snapshot.phase.type).toBe('PLACED');
+
+    view.actions.startCamera?.();
+    await flushAsync();
+    emitStable(engine, fistHand, [0, 100, 200, 300]);
+
+    setDocumentVisibility('hidden');
+    setDocumentVisibility('visible');
+    engine.emit({ landmarks: fistHand, timestamp: 1_000 });
+
+    expect(view.latest.snapshot.phase.type).toBe('PLACED');
+    emitStable(engine, fistHand, [1_100, 1_200, 1_300, 1_499]);
+    expect(view.latest.snapshot.phase.type).toBe('PLACED');
+    engine.emit({ landmarks: fistHand, timestamp: 1_500 });
+    await flushAsync();
+    expect(view.latest.snapshot.phase.type).toBe('READING');
+  });
+
+  it('does not accumulate reading open dwell while the application is hidden', async () => {
+    const { app, engine, view } = createHarness();
+    app.start();
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    dispatchPointer(view.host, 'pointerup', 'mouse', 50, 50);
+    await flushAsync();
+    dispatchPointer(view.host, 'pointerdown', 'mouse', 50, 50);
+    await flushAsync();
+    expect(view.latest.snapshot.phase.type).toBe('READING');
+
+    view.actions.startCamera?.();
+    await flushAsync();
+    emitStable(engine, openHand, [0, 50, 100, 150]);
+
+    setDocumentVisibility('hidden');
+    setDocumentVisibility('visible');
+    engine.emit({ landmarks: openHand, timestamp: 1_000 });
+
+    expect(view.latest.snapshot.phase.type).toBe('READING');
+    emitStable(engine, openHand, [1_050, 1_100, 1_150, 1_299]);
+    expect(view.latest.snapshot.phase.type).toBe('READING');
+    engine.emit({ landmarks: openHand, timestamp: 1_300 });
+    await flushAsync();
+    expect(view.latest.snapshot.phase.type).toBe('CAROUSEL');
+  });
+
+  it('safely returns a gesture-held card and resets recognition when hidden', async () => {
+    const { app, engine, scene, view } = createHarness();
+    app.start();
+    view.actions.startCamera?.();
+    await flushAsync();
+    emitStable(engine, shiftedPinchAtCenter(), [0, 20, 40, 60]);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+
+    setDocumentVisibility('hidden');
+    await flushAsync();
+
+    expect(scene.suspendedStates.at(-1)).toBe(true);
+    expect(scene.releaseCalls).toBe(1);
+    expect(view.latest.snapshot.phase.type).toBe('CAROUSEL');
+    expect(view.latest.gesture.progress).toBe(0);
+
+    setDocumentVisibility('visible');
+    emitStable(engine, shiftedPinchAtCenter(), [1_000, 1_020, 1_040]);
+    expect(view.latest.snapshot.phase.type).toBe('CAROUSEL');
+    engine.emit({ landmarks: shiftedPinchAtCenter(), timestamp: 1_060 });
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+  });
+
   it('returns a gesture-held card before pointer mode takes ownership', async () => {
     const { app, engine, scene, view } = createHarness();
     app.start();
@@ -479,6 +581,59 @@ describe('createTarotApp', () => {
     expect(scene.pickCalls).toBe(2);
     expect(view.latest.snapshot.phase.type).toBe('HOLDING');
     app.dispose();
+  });
+
+  it('uses the camera failure handoff when inference fails while holding a card', async () => {
+    const { app, engine, scene, view } = createHarness();
+    app.start();
+    view.actions.startCamera?.();
+    await flushAsync();
+    emitStable(engine, shiftedPinchAtCenter(), [0, 20, 40, 60]);
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+
+    engine.fail(new GestureEngineError(
+      'MODEL_ERROR',
+      'Hand tracking stopped unexpectedly',
+    ));
+    await flushAsync();
+
+    expect(engine.stopCalls).toBe(1);
+    expect(scene.releaseCalls).toBe(1);
+    expect(view.latest).toMatchObject({
+      inputMode: 'pointer',
+      camera: {
+        status: 'error',
+        message: 'Hand tracking stopped unexpectedly',
+      },
+      gesture: {
+        progress: 0,
+      },
+    });
+    expect(view.latest.snapshot.phase.type).toBe('CAROUSEL');
+  });
+
+  it('advances the complete draw state machine through the keyboard action', async () => {
+    const { app, scene, view } = createHarness();
+    app.start();
+
+    view.actions.advanceDraw?.();
+    expect(view.latest.snapshot.phase.type).toBe('HOLDING');
+    view.actions.advanceDraw?.();
+    await flushAsync();
+    expect(view.latest.snapshot.phase.type).toBe('PLACED');
+    view.actions.advanceDraw?.();
+    await flushAsync();
+    expect(view.latest.snapshot.phase.type).toBe('READING');
+    view.actions.advanceDraw?.();
+    await flushAsync();
+
+    expect(scene.pickCalls).toBe(1);
+    expect(scene.releaseCalls).toBe(1);
+    expect(scene.revealCalls).toHaveLength(1);
+    expect(scene.archiveCalls).toBe(1);
+    expect(view.latest.snapshot.phase.type).toBe('CAROUSEL');
+    expect(view.latest.snapshot.history).toHaveLength(1);
+    expect(view.latest.snapshot.remainingCount).toBe(77);
   });
 
   it('replaces the scene when reset interrupts an archive so stale completion cannot remove new cards', async () => {
