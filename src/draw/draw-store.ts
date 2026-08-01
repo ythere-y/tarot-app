@@ -35,7 +35,7 @@ export function createDrawStore({
     }
 
     if (event.type === 'FIST_DWELL_COMPLETE') {
-      const result = drawResult(snapshot.remainingCards, random);
+      const result = drawResult(snapshot.remainingCards, random, event.cardId);
       snapshot = createSnapshot(
         snapshot.remainingCards,
         phase,
@@ -94,8 +94,16 @@ function createSnapshot(
   };
 }
 
-function drawResult(cards: readonly TarotCard[], random: RandomSource): DrawResult {
-  const card = cards[randomIndex(cards.length, random)]!;
+function drawResult(
+  cards: readonly TarotCard[],
+  random: RandomSource,
+  cardId?: string,
+): DrawResult {
+  const card =
+    (cardId === undefined
+      ? undefined
+      : cards.find((candidate) => candidate.id === cardId))
+    ?? cards[randomIndex(cards.length, random)]!;
   return {
     cardId: card.id,
     orientation: randomOrientation(random),

@@ -15,7 +15,7 @@ export type DrawEvent =
   | { type: 'PINCH_STABLE' }
   | { type: 'RELEASE_IN_ZONE' }
   | { type: 'RELEASE_OUTSIDE' }
-  | { type: 'FIST_DWELL_COMPLETE' }
+  | { type: 'FIST_DWELL_COMPLETE'; cardId?: string }
   | { type: 'FLIP_COMPLETE' }
   | { type: 'OPEN_DWELL_COMPLETE' }
   | { type: 'ARCHIVE_COMPLETE'; isFinalCard?: boolean };
