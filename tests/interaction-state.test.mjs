@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  createInteractionState,
+  transitionInteraction,
+} from "../src/interaction-state.mjs";
+
+test("requires aiming before a card can be grabbed", () => {
+  const idle = createInteractionState();
+  assert.equal(transitionInteraction(idle, { type: "GRAB" }).phase, "IDLE");
+  const aiming = transitionInteraction(idle, { type: "POINTER_ENTER_DECK" });
+  assert.equal(transitionInteraction(aiming, { type: "GRAB" }).phase, "DRAGGING");
+});
+
+test("only confirms a card inside the reveal zone", () => {
+  let state = createInteractionState();
+  state = transitionInteraction(state, { type: "POINTER_ENTER_DECK" });
+  state = transitionInteraction(state, { type: "GRAB" });
+  assert.equal(transitionInteraction(state, { type: "CONFIRM" }).phase, "DRAGGING");
+  state = transitionInteraction(state, { type: "ENTER_REVEAL_ZONE" });
+  assert.equal(transitionInteraction(state, { type: "CONFIRM" }).phase, "REVEALED");
+});
+
+test("reset returns every phase to idle", () => {
+  const revealed = { phase: "REVEALED" };
+  assert.deepEqual(
+    transitionInteraction(revealed, { type: "RESET" }),
+    createInteractionState(),
+  );
+});
