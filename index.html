@@ -31,6 +31,13 @@
         #result-meaning { font-size: 1.2em; color: #aaa; margin-top: 10px; max-width: 600px; margin-left: auto; margin-right: auto; }
         .reversed-tag { color: #ff4444; font-size: 0.6em; border: 1px solid #ff4444; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 10px; }
 
+        #interaction-guidance {
+            position: absolute; left: 50%; top: 70%; transform: translate(-50%, -50%);
+            color: #e1be68; font-size: clamp(1rem, 2.4vw, 1.35rem); letter-spacing: 0.12em;
+            text-align: center; text-shadow: 0 0 12px rgba(225, 190, 104, 0.75);
+            pointer-events: none; white-space: nowrap;
+        }
+
         /* History Panel */
         #history-panel { 
             pointer-events: auto; background: rgba(10,10,15,0.8); border-top: 2px solid #333; 
@@ -87,6 +94,8 @@
             <h1 id="result-title">THE FOOL</h1>
             <div id="result-meaning">The beginning of a journey, innocence, spontaneity.</div>
         </div>
+
+        <div id="interaction-guidance" aria-live="polite"></div>
 
         <div id="history-panel">
             <div style="color: #666; font-style: italic;">抽卡记录...</div>
@@ -188,8 +197,62 @@
 
         // --- Texture Loader ---
         const textureLoader = new THREE.TextureLoader();
-        const backTexture = textureLoader.load('https://upload.wikimedia.org/wikipedia/commons/d/d4/RWS_Tarot_Card_Back.jpg'); // Standard RWS Back
         const defaultFront = textureLoader.load('https://via.placeholder.com/300x520/222/555?text=Tarot');
+
+        function createDeckFallbackTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 520;
+            const context = canvas.getContext('2d');
+            const gold = '#d8ae52';
+
+            context.fillStyle = '#1b0d31';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.strokeStyle = gold;
+            context.lineWidth = 12;
+            context.strokeRect(16, 16, canvas.width - 32, canvas.height - 32);
+            context.lineWidth = 3;
+            context.strokeRect(32, 32, canvas.width - 64, canvas.height - 64);
+            context.translate(canvas.width / 2, canvas.height / 2);
+            context.fillStyle = gold;
+            context.beginPath();
+            for (let index = 0; index < 16; index += 1) {
+                const angle = -Math.PI / 2 + index * Math.PI / 8;
+                const radius = index % 2 === 0 ? 92 : 39;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                if (index === 0) context.moveTo(x, y);
+                else context.lineTo(x, y);
+            }
+            context.closePath();
+            context.fill();
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            return texture;
+        }
+
+        const deckFallbackTexture = createDeckFallbackTexture();
+        let deckBackTexture = deckFallbackTexture;
+        const deckFaceMaterials = [];
+        textureLoader.load(
+            'tarot_img/card-back.svg',
+            (texture) => {
+                texture.colorSpace = THREE.SRGBColorSpace;
+                deckBackTexture = texture;
+                deckFaceMaterials.forEach((material) => {
+                    material.map = texture;
+                    material.needsUpdate = true;
+                });
+            },
+            undefined,
+            () => {
+                deckFaceMaterials.forEach((material) => {
+                    material.map = deckFallbackTexture;
+                    material.needsUpdate = true;
+                });
+            },
+        );
 
         // --- Objects ---
         const cardGroup = new THREE.Group();
@@ -224,23 +287,115 @@
         const particleSystem = new THREE.Points(particleGeo, particleMat);
         scene.add(particleSystem);
 
-        // --- Deck Visuals ---
-        function spawnDeck() {
-            // Create a stack visual
-            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.02);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: 0x333333, 
-                map: backTexture,
-                roughness: 0.6 
-            });
+        // --- Central altar visuals ---
+        const GUIDANCE_COPY = {
+            IDLE: "将手移向命运牌堆",
+            AIMING: "捏合抓取一张",
+            DRAGGING: "将牌拖入中央揭示区",
+            READY_TO_CONFIRM: "握拳确认揭示",
+            REVEALED: "命运之牌已经揭示",
+        };
+        const guidanceElement = document.getElementById('interaction-guidance');
 
-            // Create a "Deck" object to pick from
-            const deckMesh = new THREE.Mesh(geometry, material);
-            deckMesh.position.set(0, -2, 0);
-            deckMesh.userData = { isDeck: true };
-            cardGroup.add(deckMesh);
+        function renderGuidance(phase) {
+            guidanceElement.textContent = GUIDANCE_COPY[phase] ?? GUIDANCE_COPY.IDLE;
         }
-        spawnDeck();
+
+        const deckRoot = new THREE.Group();
+        deckRoot.position.set(0, -0.7, 0);
+        cardGroup.add(deckRoot);
+
+        const deckGlow = new THREE.Mesh(
+            new THREE.PlaneGeometry(CONFIG.cardWidth * 1.16, CONFIG.cardHeight * 1.12),
+            new THREE.MeshBasicMaterial({
+                color: 0xd9ae4b,
+                transparent: true,
+                opacity: 0.35,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        deckGlow.position.z = -0.06;
+        deckRoot.add(deckGlow);
+
+        const deckGeometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.025);
+        for (let index = 0; index < 5; index += 1) {
+            const edgeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x4d2b10,
+                emissive: 0xd8ae52,
+                emissiveIntensity: 0.75,
+                roughness: 0.35,
+                metalness: 0.7,
+            });
+            const faceMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                map: deckBackTexture,
+                roughness: 0.55,
+                metalness: 0.1,
+            });
+            deckFaceMaterials.push(faceMaterial);
+            const layer = new THREE.Mesh(deckGeometry, [
+                edgeMaterial, edgeMaterial, edgeMaterial, edgeMaterial, faceMaterial, faceMaterial,
+            ]);
+            layer.position.set(0, index * 0.035, index * 0.035);
+            layer.userData = { isDeck: true };
+            deckRoot.add(layer);
+        }
+
+        function setDeckVisualState(phase) {
+            const active = phase === "AIMING";
+            deckRoot.position.y = active ? -0.55 : -0.7;
+            deckGlow.material.opacity = active ? 0.75 : 0.35;
+            deckRoot.scale.setScalar(active ? 1.08 : 1);
+        }
+
+        const revealZoneShape = new THREE.Shape();
+        const revealZoneWidth = CONFIG.cardWidth * 1.18;
+        const revealZoneHeight = CONFIG.cardHeight * 1.12;
+        const revealZoneRadius = 0.24;
+        const zoneLeft = -revealZoneWidth / 2;
+        const zoneBottom = -revealZoneHeight / 2;
+        revealZoneShape.moveTo(zoneLeft + revealZoneRadius, zoneBottom);
+        revealZoneShape.lineTo(zoneLeft + revealZoneWidth - revealZoneRadius, zoneBottom);
+        revealZoneShape.quadraticCurveTo(zoneLeft + revealZoneWidth, zoneBottom, zoneLeft + revealZoneWidth, zoneBottom + revealZoneRadius);
+        revealZoneShape.lineTo(zoneLeft + revealZoneWidth, zoneBottom + revealZoneHeight - revealZoneRadius);
+        revealZoneShape.quadraticCurveTo(zoneLeft + revealZoneWidth, zoneBottom + revealZoneHeight, zoneLeft + revealZoneWidth - revealZoneRadius, zoneBottom + revealZoneHeight);
+        revealZoneShape.lineTo(zoneLeft + revealZoneRadius, zoneBottom + revealZoneHeight);
+        revealZoneShape.quadraticCurveTo(zoneLeft, zoneBottom + revealZoneHeight, zoneLeft, zoneBottom + revealZoneHeight - revealZoneRadius);
+        revealZoneShape.lineTo(zoneLeft, zoneBottom + revealZoneRadius);
+        revealZoneShape.quadraticCurveTo(zoneLeft, zoneBottom, zoneLeft + revealZoneRadius, zoneBottom);
+
+        const revealZone = new THREE.Mesh(
+            new THREE.ShapeGeometry(revealZoneShape),
+            new THREE.MeshBasicMaterial({
+                color: 0xd8ae52,
+                transparent: true,
+                opacity: 0.16,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        );
+        revealZone.position.set(0, 0.45, 7.7);
+        revealZone.visible = false;
+        scene.add(revealZone);
+
+        const revealZoneHitArea = new THREE.Mesh(
+            new THREE.PlaneGeometry(revealZoneWidth, revealZoneHeight),
+            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+        );
+        revealZoneHitArea.position.copy(revealZone.position);
+        revealZoneHitArea.userData = { isRevealZone: true };
+        scene.add(revealZoneHitArea);
+
+        function setRevealZoneVisualState(phase) {
+            const visible = phase === "DRAGGING" || phase === "READY_TO_CONFIRM";
+            revealZone.visible = visible;
+            revealZone.material.opacity = phase === "READY_TO_CONFIRM" ? 0.34 : 0.16;
+        }
+
+        renderGuidance("IDLE");
+        setDeckVisualState("IDLE");
+        setRevealZoneVisualState("IDLE");
 
         // --- Ash Logic ---
         function triggerAshEffect(mesh) {
@@ -342,7 +497,7 @@
             tex.colorSpace = THREE.SRGBColorSpace;
 
             const matSide = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            const matBack = new THREE.MeshStandardMaterial({ map: backTexture });
+            const matBack = new THREE.MeshStandardMaterial({ map: deckBackTexture });
             const matFront = new THREE.MeshStandardMaterial({ map: tex, transparent: true });
 
             const materialArray = [matSide, matSide, matSide, matSide, matFront, matBack];

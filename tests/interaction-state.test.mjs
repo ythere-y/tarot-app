@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   createInteractionState,
   transitionInteraction,
@@ -27,4 +28,11 @@ test("reset returns every phase to idle", () => {
     transitionInteraction(revealed, { type: "RESET" }),
     createInteractionState(),
   );
+});
+
+test("page exposes central altar guidance and local deck fallback", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /id="interaction-guidance"/);
+  assert.match(html, /function setDeckVisualState/);
+  assert.match(html, /tarot_img\/card-back\.svg/);
 });
