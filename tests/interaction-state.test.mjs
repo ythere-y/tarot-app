@@ -30,9 +30,11 @@ test("reset returns every phase to idle", () => {
   );
 });
 
-test("page exposes central altar guidance and local deck fallback", async () => {
+test("page exposes central altar guidance and embedded deck fallback", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html, /id="interaction-guidance"/);
   assert.match(html, /function setDeckVisualState/);
-  assert.match(html, /tarot_img\/card-back\.svg/);
+  assert.match(html, /function createDeckFallbackTexture/);
+  assert.match(html, /new THREE\.CanvasTexture/);
+  assert.doesNotMatch(html, /tarot_img\/card-back\.svg/);
 });

@@ -232,27 +232,7 @@
             return texture;
         }
 
-        const deckFallbackTexture = createDeckFallbackTexture();
-        let deckBackTexture = deckFallbackTexture;
-        const deckFaceMaterials = [];
-        textureLoader.load(
-            'tarot_img/card-back.svg',
-            (texture) => {
-                texture.colorSpace = THREE.SRGBColorSpace;
-                deckBackTexture = texture;
-                deckFaceMaterials.forEach((material) => {
-                    material.map = texture;
-                    material.needsUpdate = true;
-                });
-            },
-            undefined,
-            () => {
-                deckFaceMaterials.forEach((material) => {
-                    material.map = deckFallbackTexture;
-                    material.needsUpdate = true;
-                });
-            },
-        );
+        const deckBackTexture = createDeckFallbackTexture();
 
         // --- Objects ---
         const cardGroup = new THREE.Group();
@@ -333,7 +313,6 @@
                 roughness: 0.55,
                 metalness: 0.1,
             });
-            deckFaceMaterials.push(faceMaterial);
             const layer = new THREE.Mesh(deckGeometry, [
                 edgeMaterial, edgeMaterial, edgeMaterial, edgeMaterial, faceMaterial, faceMaterial,
             ]);
