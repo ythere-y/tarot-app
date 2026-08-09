@@ -10,6 +10,13 @@ export function isPointInsideRevealZone(point, bounds) {
   );
 }
 
+export function isPointInsideDeckTarget(point, bounds) {
+  return (
+    Math.abs(point.x) <= bounds.halfWidth &&
+    Math.abs(point.y) <= bounds.halfHeight
+  );
+}
+
 export function createInputEdgeState() {
   return {
     pointerOverDeck: false,

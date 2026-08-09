@@ -6,6 +6,7 @@ import * as interactionState from "../src/interaction-state.mjs";
 const {
   createInteractionState,
   transitionInteraction,
+  isPointInsideDeckTarget,
   isPointInsideRevealZone,
   createInputEdgeState,
   resetInputEdgeState,
@@ -61,6 +62,26 @@ test("rejects a reveal-zone point outside any boundary", () => {
     isPointInsideRevealZone(
       { x: 1.01, y: 0, z: 0 },
       { halfWidth: 1, halfHeight: 1, halfDepth: 0.5 },
+    ),
+    false,
+  );
+});
+
+test("accepts the center of the deck target", () => {
+  assert.equal(
+    isPointInsideDeckTarget(
+      { x: 0, y: 0 },
+      { halfWidth: 1.25, halfHeight: 2.15 },
+    ),
+    true,
+  );
+});
+
+test("rejects a point outside the deck target boundary", () => {
+  assert.equal(
+    isPointInsideDeckTarget(
+      { x: 1.26, y: 0 },
+      { halfWidth: 1.25, halfHeight: 2.15 },
     ),
     false,
   );
@@ -136,4 +157,16 @@ test("page routes input through the interaction reducer", async () => {
   assert.match(html, /function dispatchInteraction/);
   assert.match(html, /READY_TO_CONFIRM/);
   assert.match(html, /transitionInteraction/);
+});
+
+test("confirm keeps the revealed card before delayed cleanup without ash", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const confirmStart = html.indexOf("function confirmResult()");
+  const confirmEnd = html.indexOf("function isHeldCardInsideRevealZone()", confirmStart);
+  const confirmSource = html.slice(confirmStart, confirmEnd);
+
+  assert.doesNotMatch(confirmSource, /triggerAshEffect/);
+  assert.match(confirmSource, /setTimeout\(\(\) => \{/);
+  assert.match(confirmSource, /scene\.remove\(revealedCard\)/);
+  assert.match(confirmSource, /STATE\.heldCard = null/);
 });

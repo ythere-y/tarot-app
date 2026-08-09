@@ -107,6 +107,7 @@
         import {
             createInteractionState,
             createInputEdgeState,
+            isPointInsideDeckTarget,
             isPointInsideRevealZone,
             resetInputEdgeState,
             transitionInteraction,
@@ -350,6 +351,11 @@
             deckRoot.add(layer);
         }
 
+        const deckTargetBounds = {
+            halfWidth: CONFIG.cardWidth / 2,
+            halfHeight: CONFIG.cardHeight / 2,
+        };
+
         function setDeckVisualState(phase) {
             const active = phase === "AIMING";
             deckRoot.position.y = active ? -0.55 : -0.7;
@@ -542,6 +548,7 @@
         function confirmResult() {
             if (interaction.phase !== "REVEALED" || !STATE.heldCard || STATE.locked) return;
             STATE.locked = true;
+            const revealedCard = STATE.heldCard;
 
             const data = STATE.drawnCardData.data;
             const isRev = STATE.drawnCardData.isReversed;
@@ -566,14 +573,14 @@
             log.innerHTML = `<span class="history-name">${data.name} ${isRev ? '(逆)' : ''}</span>`;
             historyPanel.prepend(log);
 
-            // 3. Ash Effect
-            triggerAshEffect(STATE.heldCard);
-            STATE.heldCard = null;
-
-            // 4. Reset after delay
+            // 3. Keep the revealed card visible, then reset after delay
             setTimeout(() => {
                 display.style.opacity = 0;
                 STATE.locked = false;
+                scene.remove(revealedCard);
+                if (STATE.heldCard === revealedCard) {
+                    STATE.heldCard = null;
+                }
                 const pointerWasOverDeck = inputEdges.pointerOverDeck;
                 inputEdges = resetInputEdgeState();
                 dispatchInteraction({ type: "RESET" });
@@ -612,7 +619,12 @@
             const gesture = STATE.gesture;
             const isPinch = (gesture === 'PINCH' && STATE.mode === 'gesture') || (STATE.mode === 'mouse' && STATE.isInteracting);
             const isFist = (gesture === 'FIST' && STATE.mode === 'gesture');
-            const hitDeck = intersects.some(hit => hit.object.userData.isDeck);
+            deckRoot.updateWorldMatrix(true, false);
+            const deckLocalPoint = deckRoot.worldToLocal(pos.clone());
+            const hitDeck = (
+                intersects.some(hit => hit.object.userData.isDeck) ||
+                isPointInsideDeckTarget(deckLocalPoint, deckTargetBounds)
+            );
 
             const deckPointerEdge = updateInputEdgeState(inputEdges, "pointerOverDeck", hitDeck);
             inputEdges = deckPointerEdge.state;
