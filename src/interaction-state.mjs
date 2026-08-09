@@ -2,6 +2,14 @@ export function createInteractionState() {
   return { phase: "IDLE" };
 }
 
+export function isPointInsideRevealZone(point, bounds) {
+  return (
+    Math.abs(point.x) <= bounds.halfWidth &&
+    Math.abs(point.y) <= bounds.halfHeight &&
+    Math.abs(point.z) <= bounds.halfDepth
+  );
+}
+
 export function transitionInteraction(state, event) {
   if (event.type === "RESET") return createInteractionState();
 

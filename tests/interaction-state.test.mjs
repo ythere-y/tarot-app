@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import {
+import * as interactionState from "../src/interaction-state.mjs";
+
+const {
   createInteractionState,
   transitionInteraction,
-} from "../src/interaction-state.mjs";
+  isPointInsideRevealZone,
+} = interactionState;
 
 test("requires aiming before a card can be grabbed", () => {
   const idle = createInteractionState();
@@ -27,6 +30,36 @@ test("reset returns every phase to idle", () => {
   assert.deepEqual(
     transitionInteraction(revealed, { type: "RESET" }),
     createInteractionState(),
+  );
+});
+
+test("rejects a reveal-zone point with valid x/y but distant z", () => {
+  assert.equal(
+    isPointInsideRevealZone(
+      { x: 0.2, y: -0.1, z: -7.7 },
+      { halfWidth: 1, halfHeight: 1, halfDepth: 0.5 },
+    ),
+    false,
+  );
+});
+
+test("accepts a reveal-zone point within all three bounds", () => {
+  assert.equal(
+    isPointInsideRevealZone(
+      { x: 0.2, y: -0.1, z: 0.3 },
+      { halfWidth: 1, halfHeight: 1, halfDepth: 0.5 },
+    ),
+    true,
+  );
+});
+
+test("rejects a reveal-zone point outside any boundary", () => {
+  assert.equal(
+    isPointInsideRevealZone(
+      { x: 1.01, y: 0, z: 0 },
+      { halfWidth: 1, halfHeight: 1, halfDepth: 0.5 },
+    ),
+    false,
   );
 });
 
@@ -66,4 +99,16 @@ test("page routes input through the interaction reducer", async () => {
   assert.match(html, /function dispatchInteraction/);
   assert.match(html, /READY_TO_CONFIRM/);
   assert.match(html, /transitionInteraction/);
+});
+
+test("page resets interaction input edge state after a result", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /function resetInteractionInputEdges\(\)/);
+  assert.match(html, /heldCardInRevealZone = false/);
+  assert.match(html, /wasGrabInputActive = false/);
+  assert.match(html, /wasFistActive = false/);
+  assert.match(
+    html,
+    /const pointerWasOverDeck = pointerOverDeck;\s*resetInteractionInputEdges\(\);\s*dispatchInteraction\(\{ type: "RESET" \}\)/,
+  );
 });

@@ -106,6 +106,7 @@
         import * as THREE from 'three';
         import {
             createInteractionState,
+            isPointInsideRevealZone,
             transitionInteraction,
         } from "./src/interaction-state.mjs";
 
@@ -390,6 +391,12 @@
         revealZoneHitArea.userData = { isRevealZone: true };
         scene.add(revealZoneHitArea);
 
+        const revealZoneBounds = {
+            halfWidth: revealZoneWidth / 2,
+            halfHeight: revealZoneHeight / 2,
+            halfDepth: 0.5,
+        };
+
         function setRevealZoneVisualState(phase) {
             const visible = phase === "DRAGGING" || phase === "READY_TO_CONFIRM";
             revealZone.visible = visible;
@@ -563,8 +570,11 @@
             setTimeout(() => {
                 display.style.opacity = 0;
                 STATE.locked = false;
+                const pointerWasOverDeck = pointerOverDeck;
+                resetInteractionInputEdges();
                 dispatchInteraction({ type: "RESET" });
-                if (pointerOverDeck) {
+                if (pointerWasOverDeck) {
+                    pointerOverDeck = true;
                     dispatchInteraction({ type: "POINTER_ENTER_DECK" });
                 }
             }, 4000);
@@ -575,14 +585,18 @@
         let wasGrabInputActive = false;
         let wasFistActive = false;
 
+        function resetInteractionInputEdges() {
+            pointerOverDeck = false;
+            heldCardInRevealZone = false;
+            wasGrabInputActive = false;
+            wasFistActive = false;
+        }
+
         function isHeldCardInsideRevealZone() {
             if (!STATE.heldCard) return false;
 
             const localCardPosition = revealZoneHitArea.worldToLocal(STATE.heldCard.position.clone());
-            return (
-                Math.abs(localCardPosition.x) <= revealZoneWidth / 2 &&
-                Math.abs(localCardPosition.y) <= revealZoneHeight / 2
-            );
+            return isPointInsideRevealZone(localCardPosition, revealZoneBounds);
         }
 
         function updateInteraction(dt) {
