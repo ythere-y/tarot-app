@@ -106,11 +106,15 @@
         import * as THREE from 'three';
         import {
             createInteractionState,
+            createInputEdgeState,
             isPointInsideRevealZone,
+            resetInputEdgeState,
             transitionInteraction,
+            updateInputEdgeState,
         } from "./src/interaction-state.mjs";
 
         let interaction = createInteractionState();
+        let inputEdges = createInputEdgeState();
 
         function dispatchInteraction(event) {
             const previousPhase = interaction.phase;
@@ -570,26 +574,14 @@
             setTimeout(() => {
                 display.style.opacity = 0;
                 STATE.locked = false;
-                const pointerWasOverDeck = pointerOverDeck;
-                resetInteractionInputEdges();
+                const pointerWasOverDeck = inputEdges.pointerOverDeck;
+                inputEdges = resetInputEdgeState();
                 dispatchInteraction({ type: "RESET" });
                 if (pointerWasOverDeck) {
-                    pointerOverDeck = true;
+                    inputEdges = updateInputEdgeState(inputEdges, "pointerOverDeck", true).state;
                     dispatchInteraction({ type: "POINTER_ENTER_DECK" });
                 }
             }, 4000);
-        }
-
-        let pointerOverDeck = false;
-        let heldCardInRevealZone = false;
-        let wasGrabInputActive = false;
-        let wasFistActive = false;
-
-        function resetInteractionInputEdges() {
-            pointerOverDeck = false;
-            heldCardInRevealZone = false;
-            wasGrabInputActive = false;
-            wasFistActive = false;
         }
 
         function isHeldCardInsideRevealZone() {
@@ -622,8 +614,9 @@
             const isFist = (gesture === 'FIST' && STATE.mode === 'gesture');
             const hitDeck = intersects.some(hit => hit.object.userData.isDeck);
 
-            if (hitDeck !== pointerOverDeck) {
-                pointerOverDeck = hitDeck;
+            const deckPointerEdge = updateInputEdgeState(inputEdges, "pointerOverDeck", hitDeck);
+            inputEdges = deckPointerEdge.state;
+            if (deckPointerEdge.changed) {
                 dispatchInteraction({
                     type: hitDeck ? "POINTER_ENTER_DECK" : "POINTER_LEAVE_DECK",
                 });
@@ -635,10 +628,11 @@
             else cursorMesh.material.color.set(0x00ffff);
 
             // 1. Grabbing Card
-            if (isPinch && !wasGrabInputActive && interaction.phase === "AIMING") {
+            const grabEdge = updateInputEdgeState(inputEdges, "grabActive", isPinch);
+            inputEdges = grabEdge.state;
+            if (grabEdge.rising && interaction.phase === "AIMING") {
                 dispatchInteraction({ type: "GRAB" });
             }
-            wasGrabInputActive = isPinch;
 
             // 2. Dragging Card
             if (STATE.heldCard) {
@@ -658,18 +652,24 @@
                 }
 
                 const cardInRevealZone = isHeldCardInsideRevealZone();
-                if (cardInRevealZone !== heldCardInRevealZone) {
-                    heldCardInRevealZone = cardInRevealZone;
+                const revealZoneEdge = updateInputEdgeState(
+                    inputEdges,
+                    "heldCardInRevealZone",
+                    cardInRevealZone,
+                );
+                inputEdges = revealZoneEdge.state;
+                if (revealZoneEdge.changed) {
                     dispatchInteraction({
                         type: cardInRevealZone ? "ENTER_REVEAL_ZONE" : "LEAVE_REVEAL_ZONE",
                     });
                 }
             }
 
-            if (isFist && !wasFistActive && interaction.phase === "READY_TO_CONFIRM") {
+            const fistEdge = updateInputEdgeState(inputEdges, "fistActive", isFist);
+            inputEdges = fistEdge.state;
+            if (fistEdge.rising && interaction.phase === "READY_TO_CONFIRM") {
                 dispatchInteraction({ type: "CONFIRM" });
             }
-            wasFistActive = isFist;
         }
 
         // --- MediaPipe Hands Setup ---

@@ -7,6 +7,9 @@ const {
   createInteractionState,
   transitionInteraction,
   isPointInsideRevealZone,
+  createInputEdgeState,
+  resetInputEdgeState,
+  updateInputEdgeState,
 } = interactionState;
 
 test("requires aiming before a card can be grabbed", () => {
@@ -63,6 +66,40 @@ test("rejects a reveal-zone point outside any boundary", () => {
   );
 });
 
+test("reset clears every input edge", () => {
+  let inputEdges = createInputEdgeState();
+  for (const edgeName of [
+    "pointerOverDeck",
+    "heldCardInRevealZone",
+    "grabActive",
+    "fistActive",
+  ]) {
+    inputEdges = updateInputEdgeState(inputEdges, edgeName, true).state;
+  }
+
+  assert.deepEqual(resetInputEdgeState(inputEdges), createInputEdgeState());
+});
+
+test("recognizes a grab rising edge after reset", () => {
+  let inputEdges = createInputEdgeState();
+  inputEdges = updateInputEdgeState(inputEdges, "grabActive", true).state;
+  inputEdges = resetInputEdgeState(inputEdges);
+
+  const nextGrab = updateInputEdgeState(inputEdges, "grabActive", true);
+  assert.equal(nextGrab.rising, true);
+  assert.equal(updateInputEdgeState(nextGrab.state, "grabActive", true).rising, false);
+});
+
+test("recognizes a fist rising edge after reset", () => {
+  let inputEdges = createInputEdgeState();
+  inputEdges = updateInputEdgeState(inputEdges, "fistActive", true).state;
+  inputEdges = resetInputEdgeState(inputEdges);
+
+  const nextFist = updateInputEdgeState(inputEdges, "fistActive", true);
+  assert.equal(nextFist.rising, true);
+  assert.equal(updateInputEdgeState(nextFist.state, "fistActive", true).rising, false);
+});
+
 test("page exposes central altar guidance and embedded deck fallback", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html, /id="interaction-guidance"/);
@@ -99,16 +136,4 @@ test("page routes input through the interaction reducer", async () => {
   assert.match(html, /function dispatchInteraction/);
   assert.match(html, /READY_TO_CONFIRM/);
   assert.match(html, /transitionInteraction/);
-});
-
-test("page resets interaction input edge state after a result", async () => {
-  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /function resetInteractionInputEdges\(\)/);
-  assert.match(html, /heldCardInRevealZone = false/);
-  assert.match(html, /wasGrabInputActive = false/);
-  assert.match(html, /wasFistActive = false/);
-  assert.match(
-    html,
-    /const pointerWasOverDeck = pointerOverDeck;\s*resetInteractionInputEdges\(\);\s*dispatchInteraction\(\{ type: "RESET" \}\)/,
-  );
 });

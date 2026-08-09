@@ -10,6 +10,27 @@ export function isPointInsideRevealZone(point, bounds) {
   );
 }
 
+export function createInputEdgeState() {
+  return {
+    pointerOverDeck: false,
+    heldCardInRevealZone: false,
+    grabActive: false,
+    fistActive: false,
+  };
+}
+
+export function resetInputEdgeState() {
+  return createInputEdgeState();
+}
+
+export function updateInputEdgeState(state, edgeName, active) {
+  return {
+    state: { ...state, [edgeName]: active },
+    changed: state[edgeName] !== active,
+    rising: active && !state[edgeName],
+  };
+}
+
 export function transitionInteraction(state, event) {
   if (event.type === "RESET") return createInteractionState();
 
