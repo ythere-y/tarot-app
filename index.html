@@ -81,7 +81,7 @@
                 <div style="font-size: 0.8em; margin-top: 5px; color: #aaa;">
                     ✋ 张开: 悬停<br>
                     👌 捏合: 抓牌<br>
-                    ✊ 握拳: 确认/化灰
+                    ✊ 握拳: 确认揭示
                 </div>
             </div>
             <div class="status-panel">
@@ -104,6 +104,30 @@
 
     <script type="module">
         import * as THREE from 'three';
+        import {
+            createInteractionState,
+            transitionInteraction,
+        } from "./src/interaction-state.mjs";
+
+        let interaction = createInteractionState();
+
+        function dispatchInteraction(event) {
+            const previousPhase = interaction.phase;
+            interaction = transitionInteraction(interaction, event);
+            renderGuidance(interaction.phase);
+            setDeckVisualState(interaction.phase);
+            setRevealZoneVisualState(interaction.phase);
+
+            if (interaction.phase === "DRAGGING" && previousPhase !== "DRAGGING" && !STATE.heldCard) {
+                createHeldCard();
+            }
+
+            if (interaction.phase === "REVEALED" && previousPhase !== "REVEALED") {
+                confirmResult();
+            }
+
+            return interaction;
+        }
 
         // --- Configuration ---
         const CONFIG = {
@@ -505,7 +529,7 @@
         }
 
         function confirmResult() {
-            if (!STATE.heldCard || STATE.locked) return;
+            if (interaction.phase !== "REVEALED" || !STATE.heldCard || STATE.locked) return;
             STATE.locked = true;
 
             const data = STATE.drawnCardData.data;
@@ -539,7 +563,26 @@
             setTimeout(() => {
                 display.style.opacity = 0;
                 STATE.locked = false;
+                dispatchInteraction({ type: "RESET" });
+                if (pointerOverDeck) {
+                    dispatchInteraction({ type: "POINTER_ENTER_DECK" });
+                }
             }, 4000);
+        }
+
+        let pointerOverDeck = false;
+        let heldCardInRevealZone = false;
+        let wasGrabInputActive = false;
+        let wasFistActive = false;
+
+        function isHeldCardInsideRevealZone() {
+            if (!STATE.heldCard) return false;
+
+            const localCardPosition = revealZoneHitArea.worldToLocal(STATE.heldCard.position.clone());
+            return (
+                Math.abs(localCardPosition.x) <= revealZoneWidth / 2 &&
+                Math.abs(localCardPosition.y) <= revealZoneHeight / 2
+            );
         }
 
         function updateInteraction(dt) {
@@ -563,6 +606,14 @@
             const gesture = STATE.gesture;
             const isPinch = (gesture === 'PINCH' && STATE.mode === 'gesture') || (STATE.mode === 'mouse' && STATE.isInteracting);
             const isFist = (gesture === 'FIST' && STATE.mode === 'gesture');
+            const hitDeck = intersects.some(hit => hit.object.userData.isDeck);
+
+            if (hitDeck !== pointerOverDeck) {
+                pointerOverDeck = hitDeck;
+                dispatchInteraction({
+                    type: hitDeck ? "POINTER_ENTER_DECK" : "POINTER_LEAVE_DECK",
+                });
+            }
 
             // Colorize cursor based on state
             if (isPinch) cursorMesh.material.color.set(0xff00ff);
@@ -570,13 +621,10 @@
             else cursorMesh.material.color.set(0x00ffff);
 
             // 1. Grabbing Card
-            if (isPinch && !STATE.heldCard) {
-                // If hitting deck
-                const hitDeck = intersects.find(hit => hit.object.userData.isDeck);
-                if (hitDeck) {
-                    createHeldCard();
-                }
+            if (isPinch && !wasGrabInputActive && interaction.phase === "AIMING") {
+                dispatchInteraction({ type: "GRAB" });
             }
+            wasGrabInputActive = isPinch;
 
             // 2. Dragging Card
             if (STATE.heldCard) {
@@ -595,12 +643,19 @@
                      STATE.heldCard.rotation.z = (STATE.pointer.x * 0.1);
                 }
 
-                // 3. Confirming
-                if (isFist || (STATE.mode === 'mouse' && !STATE.isInteracting && STATE.heldCard)) {
-                    // In mouse mode, releasing click drops/confirms
-                    confirmResult();
+                const cardInRevealZone = isHeldCardInsideRevealZone();
+                if (cardInRevealZone !== heldCardInRevealZone) {
+                    heldCardInRevealZone = cardInRevealZone;
+                    dispatchInteraction({
+                        type: cardInRevealZone ? "ENTER_REVEAL_ZONE" : "LEAVE_REVEAL_ZONE",
+                    });
                 }
             }
+
+            if (isFist && !wasFistActive && interaction.phase === "READY_TO_CONFIRM") {
+                dispatchInteraction({ type: "CONFIRM" });
+            }
+            wasFistActive = isFist;
         }
 
         // --- MediaPipe Hands Setup ---
@@ -734,7 +789,12 @@
         });
 
         window.addEventListener('mouseup', () => {
-            if(STATE.mode === 'mouse') STATE.isInteracting = false;
+            if(STATE.mode === 'mouse') {
+                STATE.isInteracting = false;
+                if (interaction.phase === "READY_TO_CONFIRM") {
+                    dispatchInteraction({ type: "CONFIRM" });
+                }
+            }
         });
 
         window.addEventListener('resize', () => {

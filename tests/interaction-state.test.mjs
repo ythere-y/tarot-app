@@ -60,3 +60,10 @@ test("page creates held cards at the central altar", async () => {
   assert.match(html, /deckRoot\.getWorldPosition\(new THREE\.Vector3\(\)\)/);
   assert.match(html, /mesh\.position\.copy\(deckWorldPosition\)/);
 });
+
+test("page routes input through the interaction reducer", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /function dispatchInteraction/);
+  assert.match(html, /READY_TO_CONFIRM/);
+  assert.match(html, /transitionInteraction/);
+});
