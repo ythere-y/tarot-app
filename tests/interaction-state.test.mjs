@@ -38,3 +38,25 @@ test("page exposes central altar guidance and embedded deck fallback", async () 
   assert.match(html, /new THREE\.CanvasTexture/);
   assert.doesNotMatch(html, /tarot_img\/card-back\.svg/);
 });
+
+test("page raycasts nested central altar layers", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /cardGroup\.add\(deckRoot\)/);
+  assert.match(html, /layer\.userData = \{ isDeck: true \}/);
+  assert.match(html, /raycaster\.intersectObjects\(cardGroup\.children,\s*true\)/);
+});
+
+test("page renders every visual from one phase entry point", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(
+    html,
+    /function renderInteractionPhase\(phase\) \{\s*renderGuidance\(phase\);\s*setDeckVisualState\(phase\);\s*setRevealZoneVisualState\(phase\);\s*\}/,
+  );
+  assert.match(html, /renderInteractionPhase\("IDLE"\)/);
+});
+
+test("page creates held cards at the central altar", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /deckRoot\.getWorldPosition\(new THREE\.Vector3\(\)\)/);
+  assert.match(html, /mesh\.position\.copy\(deckWorldPosition\)/);
+});

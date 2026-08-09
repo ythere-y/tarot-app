@@ -372,9 +372,13 @@
             revealZone.material.opacity = phase === "READY_TO_CONFIRM" ? 0.34 : 0.16;
         }
 
-        renderGuidance("IDLE");
-        setDeckVisualState("IDLE");
-        setRevealZoneVisualState("IDLE");
+        function renderInteractionPhase(phase) {
+            renderGuidance(phase);
+            setDeckVisualState(phase);
+            setRevealZoneVisualState(phase);
+        }
+
+        renderInteractionPhase("IDLE");
 
         // --- Ash Logic ---
         function triggerAshEffect(mesh) {
@@ -483,8 +487,10 @@
 
             const mesh = new THREE.Mesh(geometry, materialArray);
             
-            // Initial position (at deck)
-            mesh.position.set(0, -2, 0);
+            // Initial position (at the altar's current world position)
+            deckRoot.updateWorldMatrix(true, false);
+            const deckWorldPosition = deckRoot.getWorldPosition(new THREE.Vector3());
+            mesh.position.copy(deckWorldPosition);
             
             // Orientation
             if (draw.isReversed) {
@@ -541,7 +547,7 @@
 
             // Raycasting
             raycaster.setFromCamera(STATE.pointer, camera);
-            const intersects = raycaster.intersectObjects(cardGroup.children);
+            const intersects = raycaster.intersectObjects(cardGroup.children, true);
             
             // Visual Cursor
             const vector = new THREE.Vector3(STATE.pointer.x, STATE.pointer.y, 0.5);
