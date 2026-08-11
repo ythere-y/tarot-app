@@ -1,8 +1,8 @@
 # 🔮 Ether Tarot
 
 <p align="center">
-  An immersive, browser-based tarot experience controlled by hand gestures.<br>
-  Draw, reveal, and interpret a complete 78-card deck through a Three.js scene powered by MediaPipe Hands.
+  一款通过手势操控的沉浸式浏览器塔罗体验。<br>
+  借助 MediaPipe Hands 与 Three.js，在完整的 78 张塔罗牌中抽取、翻开并解读属于你的牌。
 </p>
 
 <p align="center">
@@ -12,142 +12,164 @@
   <img alt="HTML5" src="https://img.shields.io/badge/HTML5-Single_Page-E34F26?logo=html5&logoColor=fff">
 </p>
 
-![Ether Tarot opening screen](docs/main.png)
+![Ether Tarot 启动界面](docs/main.png)
 
-## Overview
+## 项目简介
 
-Ether Tarot turns a familiar card-drawing ritual into a touch-free interactive experience. A live camera feed is processed locally by MediaPipe Hands, translated into a small gesture vocabulary, and mapped into a Three.js scene where cards can be hovered, picked up, moved, and revealed.
+Ether Tarot 将传统的塔罗抽牌仪式转化为无需触碰屏幕的互动体验。摄像头画面在浏览器本地通过 MediaPipe Hands 处理，识别结果会转换为一组简单的手势指令，并映射到 Three.js 三维场景中，让用户能够悬停、拿起、移动和翻开卡牌。
 
-The project combines real-time computer-vision input with 3D rendering while preserving accessibility through a complete mouse-control fallback.
+项目将实时计算机视觉输入与 3D 渲染相结合，同时提供完整的鼠标操作模式；在摄像头不可用、权限被拒绝或不便使用手势时，仍然可以完成抽牌。
 
-## Experience
+## 体验展示
 
 <table>
   <tr>
-    <td width="50%" align="center"><strong>Draw a card</strong></td>
-    <td width="50%" align="center"><strong>Reveal the result</strong></td>
+    <td width="50%" align="center"><strong>抽取卡牌</strong></td>
+    <td width="50%" align="center"><strong>查看结果</strong></td>
   </tr>
   <tr>
-    <td><img src="docs/mid-card.png" alt="A tarot card being drawn with gesture controls"></td>
-    <td><img src="docs/result.png" alt="The revealed tarot card and draw history"></td>
+    <td><img src="docs/mid-card.png" alt="通过手势抽取塔罗牌"></td>
+    <td><img src="docs/result.png" alt="翻开的塔罗牌及抽牌历史"></td>
   </tr>
   <tr>
-    <td align="center">Pinch to grab and position a card in 3D space.</td>
-    <td align="center">Confirm the draw to reveal its orientation and meaning.</td>
+    <td align="center">捏合手指拿起卡牌，并在三维空间中移动。</td>
+    <td align="center">确认抽牌后，查看牌面方向和对应含义。</td>
   </tr>
 </table>
 
-## Highlights
+## 当前功能
 
-- **Touch-free interaction** — MediaPipe hand landmarks drive the entire drawing flow.
-- **Real-time 3D scene** — Three.js renders the deck, lighting, fog, particles, card movement, and reveal transitions.
-- **Three-gesture vocabulary** — Open hand to hover, pinch to grab, and fist to confirm.
-- **Complete tarot deck** — Draw randomly from all 78 Major and Minor Arcana cards without replacement.
-- **Upright and reversed readings** — Every draw independently resolves its orientation and corresponding meaning.
-- **Mouse fallback** — Switch input modes at any time when a camera is unavailable or permission is denied.
-- **Session history** — Review previously drawn cards and their orientations in the on-screen history panel.
+- **非接触式交互**——使用 MediaPipe 手部关键点驱动完整的抽牌流程。
+- **实时 3D 场景**——通过 Three.js 渲染牌组、灯光、雾效、粒子、卡牌移动与翻牌动画。
+- **三种核心手势**——张开手掌移动和悬停，捏合手指拿取卡牌，握拳确认抽牌。
+- **完整塔罗牌组**——包含 22 张大阿卡那与 56 张小阿卡那，共计 78 张牌。
+- **正位与逆位结果**——每次抽牌都会独立决定牌面方向并显示相应含义。
+- **鼠标备用模式**——无法使用摄像头时，可随时切换至鼠标操作。
+- **会话抽牌历史**——在页面历史区域查看本次会话已经抽出的牌及其方向。
 
-## Interaction Flow
+## 交互流程
 
 ```text
-Camera frame
+摄像头画面
     ↓
-MediaPipe hand landmarks
+MediaPipe 手部关键点
     ↓
-Gesture classification (open / pinch / fist)
+手势分类（张开 / 捏合 / 握拳）
     ↓
-Normalized pointer coordinates
+归一化指针坐标
     ↓
-Three.js raycasting and card state
+Three.js 射线检测与卡牌状态
     ↓
-Draw → move → reveal → record
+抽取 → 移动 → 翻开 → 记录
 ```
 
-| Gesture | Action |
+| 操作方式 | 对应动作 |
 | --- | --- |
-| ✋ Open hand | Move the pointer and hover over the deck |
-| 👌 Pinch | Pick up and drag a card |
-| ✊ Fist | Confirm the selection and reveal the reading |
-| 🖱️ Mouse mode | Move, press, drag, and release as a camera-free alternative |
+| ✋ 张开手掌 | 移动指针并悬停在牌组上 |
+| 👌 捏合手指 | 拿起并拖动卡牌 |
+| ✊ 握拳 | 确认选择并翻开解读 |
+| 🖱️ 鼠标模式 | 在不使用摄像头时移动、按下、拖动和释放 |
 
-## Engineering Details
+## 技术实现
 
-### Gesture input
+### 手势输入
 
-MediaPipe Hands tracks a single hand from the browser camera. Distances between selected landmarks are converted into deterministic gesture states, while the palm position is normalized into Three.js pointer coordinates.
+MediaPipe Hands 通过浏览器摄像头追踪一只手。程序计算特定手部关键点之间的距离，将其转换为确定的手势状态，再将手掌位置归一化为 Three.js 场景中的指针坐标。
 
-### 3D interaction
+### 3D 交互
 
-A Three.js raycaster maps the gesture-controlled pointer onto objects in the scene. The application keeps explicit interaction state for the remaining deck, hovered card, held card, input mode, animation lock, and draw result.
+Three.js 的射线检测器会把手势指针映射到场景对象。应用内部维护剩余牌组、当前悬停卡牌、手持卡牌、输入模式、动画锁定状态和抽牌结果等交互状态。
 
-### Visual feedback
+### 视觉反馈
 
-Lighting, exponential fog, additive particles, card rotation, and reveal transitions reinforce each interaction state. The UI separately reports camera status, the recognized gesture, remaining cards, the current interpretation, and draw history.
+灯光、指数雾效、叠加粒子、卡牌旋转和翻牌过渡用于强化不同交互阶段。界面会分别显示摄像头状态、已识别手势、剩余牌数、当前牌义和抽牌历史。
 
-## Tech Stack
+## 技术栈
 
-| Technology | Role |
+| 技术 | 用途 |
 | --- | --- |
-| JavaScript / HTML / CSS | Application state, interface, and interaction logic |
-| [Three.js](https://threejs.org/) | WebGL scene, geometry, materials, animation, and raycasting |
-| [MediaPipe Hands](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker) | Real-time hand landmark detection |
-| Browser Media APIs | Camera capture and frame processing |
-| PowerShell `HttpListener` | Lightweight local development server |
+| JavaScript / HTML / CSS | 应用状态、界面与交互逻辑 |
+| [Three.js](https://threejs.org/) | WebGL 场景、几何体、材质、动画与射线检测 |
+| [MediaPipe Hands](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker) | 实时手部关键点检测 |
+| 浏览器媒体 API | 摄像头访问与视频帧处理 |
+| PowerShell `HttpListener` | 轻量级本地开发服务器 |
 
-## Run Locally
+## 本地运行
 
-### Prerequisites
+### 环境要求
 
-- A modern browser with WebGL and camera support
-- PowerShell, or Node.js with npm
-- A webcam for gesture mode
+- 支持 WebGL 和摄像头访问的现代浏览器
+- PowerShell，或已安装 Node.js 与 npm
+- 手势模式需要可用的摄像头
 
-### 1. Clone the repository
+### 1. 克隆项目
 
 ```bash
 git clone https://github.com/Fengfengex/tarot-app.git
 cd tarot-app
 ```
 
-### 2. Start a local server
+### 2. 启动本地服务器
 
-Using the included PowerShell server:
+使用项目内置的 PowerShell 服务器：
 
 ```powershell
 .\server.ps1
 ```
 
-Then open [http://localhost:8080](http://localhost:8080).
+随后访问 [http://localhost:8080](http://localhost:8080)。
 
-Alternatively, with Node.js:
+也可以使用 Node.js：
 
 ```bash
 npm install
 npm start
 ```
 
-Allow camera access when prompted. If camera access is unavailable, use the mode switch in the top-left control panel to enable mouse input.
+浏览器提示时请允许摄像头访问。如果摄像头不可用，可通过左上角控制区域切换至鼠标模式。
 
-> Camera APIs generally require a secure context. Run the project through `localhost` or HTTPS instead of opening `index.html` directly.
+> 摄像头 API 通常要求页面运行在安全上下文中。请通过 `localhost` 或 HTTPS 访问项目，不要直接双击打开 `index.html`。
 
-## Project Structure
+## 当前开发状态
+
+当前仓库中的 JavaScript 单页版本可以运行，核心的 3D 抽牌、手势识别、鼠标备用操作、正逆位结果和抽牌历史已经实现。
+
+仓库同时已经完成下一版体验的设计文档与实施计划，但新版代码尚未开始迁移。规划中的 Vite、TypeScript、自动化测试、模块化状态机、完整中文牌义数据、稳定手势过滤、响应式界面和自动部署等能力，均不属于当前版本的已完成功能。
+
+相关文档：
+
+- [新版体验设计](docs/superpowers/specs/2026-08-01-tarot-experience-redesign-design.md)
+- [新版实施计划](docs/superpowers/plans/2026-08-01-tarot-experience-redesign.md)
+
+## 后续路线图
+
+后续开发将按照现有实施计划逐步推进：
+
+1. 将项目迁移到 Vite、TypeScript，并建立 Vitest 与 ESLint 验证流程。
+2. 补全 78 张 Rider–Waite 塔罗牌的中英文名称及正逆位中文牌义。
+3. 使用有限状态机统一手势、鼠标和触摸输入的抽牌规则。
+4. 提升手势稳定性，加入连续帧确认、停留时间判断和指针平滑。
+5. 重建卡牌轮盘、翻牌、粒子归档与响应式中文界面。
+6. 增加异常恢复、WebGL 降级方案、静态部署与跨设备验收。
+
+## 项目结构
 
 ```text
 tarot-app/
-├── index.html          # Three.js scene, gesture pipeline, UI, and application state
-├── tarot_img/          # Major and Minor Arcana artwork
-├── docs/               # README screenshots and project documentation
-├── server.ps1          # Lightweight localhost server
-├── package.json        # Project metadata and development scripts
-└── README.md
+├── index.html          # Three.js 场景、手势流程、界面和应用状态
+├── tarot_img/          # 大阿卡那与小阿卡那牌面资源
+├── docs/               # 项目截图、设计文档与实施计划
+├── server.ps1          # 轻量级 localhost 服务器
+├── package.json        # 项目元数据和开发命令
+└── README.md           # 中文项目说明
 ```
 
-## Repository
+## 项目仓库
 
-Source code: [github.com/Fengfengex/tarot-app](https://github.com/Fengfengex/tarot-app)
+源代码：[github.com/Fengfengex/tarot-app](https://github.com/Fengfengex/tarot-app)
 
 ---
 
 <p align="center">
-  Built as an exploration of gesture-driven interfaces, real-time graphics, and playful browser interaction.
+  本项目用于探索手势驱动界面、实时图形渲染与浏览器互动体验。
 </p>
