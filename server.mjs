@@ -66,7 +66,26 @@ export function createAppServer({ readingService, rateLimit } = {}) {
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT) || 8090;
-  createAppServer().listen(port, '127.0.0.1', () => console.log(`Ether Tarot running at http://localhost:${port}`));
+export function startServer({
+  port = Number(process.env.PORT) || 8090,
+  host = '127.0.0.1',
+  log = console.log,
+} = {}) {
+  const server = createAppServer();
+  return new Promise((resolveStart, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.off('error', reject);
+      const actualPort = server.address().port;
+      log(`Ether Tarot running at http://localhost:${actualPort}`);
+      resolveStart(server);
+    });
+  });
+}
+
+if (process.argv[1]?.endsWith('server.mjs')) {
+  startServer().catch((error) => {
+    console.error(`Unable to start Ether Tarot: ${error.message}`);
+    process.exitCode = 1;
+  });
 }

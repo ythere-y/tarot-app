@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAppServer } from '../../server.mjs';
+import { createAppServer, startServer } from '../../server.mjs';
 
 const reading = { headline: '标题', reading: '解读', action: '行动', disclaimer: '仅供娱乐与自我反思。' };
 const body = { topic: 'general', cardName: 'The Fool', orientation: 'upright', standardMeaning: '新的开始。' };
@@ -40,3 +40,13 @@ test('blocks traversal and rate limits repeated API calls', async () => withServ
   assert.equal((await fetch(`${base}/api/reading`, init)).status, 200);
   assert.equal((await fetch(`${base}/api/reading`, init)).status, 429);
 }));
+
+test('startServer listens on the configured local address', async () => {
+  const server = await startServer({ port: 0, host: '127.0.0.1', log: () => {} });
+  try {
+    assert.equal(server.address().address, '127.0.0.1');
+    assert.ok(server.address().port > 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
