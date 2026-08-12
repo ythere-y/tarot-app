@@ -67,6 +67,6 @@ export function createAppServer({ readingService, rateLimit } = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT) || 8080;
-  createAppServer().listen(port, () => console.log(`Ether Tarot running at http://localhost:${port}`));
+  const port = Number(process.env.PORT) || 8090;
+  createAppServer().listen(port, '127.0.0.1', () => console.log(`Ether Tarot running at http://localhost:${port}`));
 }

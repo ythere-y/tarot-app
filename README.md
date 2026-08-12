@@ -12,7 +12,7 @@ $env:DEEPSEEK_API_KEY='你的新 DeepSeek API Key'
 npm start
 ```
 
-然后访问 [http://localhost:8080](http://localhost:8080)。默认模型为 `deepseek-v4-pro`，启用思考模式和 `high` 推理强度；可用 `$env:DEEPSEEK_MODEL` 覆盖，用 `$env:PORT` 修改端口。运行测试使用 `npm test`。
+然后访问 [http://localhost:8090](http://localhost:8090)。默认模型为 `deepseek-v4-pro`，启用思考模式和 `high` 推理强度；可用 `$env:DEEPSEEK_MODEL` 覆盖，用 `$env:PORT` 修改端口。运行测试使用 `npm test`。
 
 不要把真实密钥写入仓库或前端代码。`.env.example` 仅列出变量名；服务直接读取进程环境变量。未配置密钥或上游不可用时，抽牌和固定牌义仍然可用。
 
