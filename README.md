@@ -1,6 +1,6 @@
 # 🔮 Ether Tarot
 
-## 受控 AI 星语（OpenAI）
+## 受控 AI 星语（DeepSeek）
 
 项目支持在抽牌后，根据固定主题、牌面、正逆位和本地标准牌义生成简短中文解读。浏览器不接触 API Key，也不接受自由文本问题；生成内容仅供娱乐与自我反思。
 
@@ -8,11 +8,11 @@
 
 ```powershell
 npm install
-$env:OPENAI_API_KEY='你的 OpenAI API Key'
+$env:DEEPSEEK_API_KEY='你的新 DeepSeek API Key'
 npm start
 ```
 
-然后访问 [http://localhost:8080](http://localhost:8080)。默认模型为 `gpt-5.4-nano`，可用 `$env:OPENAI_MODEL` 覆盖，用 `$env:PORT` 修改端口。运行测试使用 `npm test`。
+然后访问 [http://localhost:8080](http://localhost:8080)。默认模型为 `deepseek-v4-pro`，启用思考模式和 `high` 推理强度；可用 `$env:DEEPSEEK_MODEL` 覆盖，用 `$env:PORT` 修改端口。运行测试使用 `npm test`。
 
 不要把真实密钥写入仓库或前端代码。`.env.example` 仅列出变量名；服务直接读取进程环境变量。未配置密钥或上游不可用时，抽牌和固定牌义仍然可用。
 

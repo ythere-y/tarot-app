@@ -56,29 +56,33 @@ test('requires a server-side API key', async () => {
   });
 });
 
-test('sends fixed instructions and parses structured output', async () => {
+test('calls DeepSeek V4 Pro with thinking enabled and parses JSON output', async () => {
+  let requestUrl;
   let requestBody;
   const service = createReadingService({
     apiKey: 'test-key',
-    model: 'test-model',
-    fetchImpl: async (_url, init) => {
+    model: 'deepseek-v4-pro',
+    fetchImpl: async (url, init) => {
+      requestUrl = url;
       requestBody = JSON.parse(init.body);
-      return new Response(JSON.stringify({ output_text: JSON.stringify(validOutput) }), { status: 200 });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(validOutput), reasoning_content: 'private reasoning' } }] }), { status: 200 });
     },
   });
 
   assert.deepEqual(await service.generate(validRequest), validOutput);
-  assert.equal(requestBody.model, 'test-model');
-  assert.equal(requestBody.text.format.type, 'json_schema');
-  assert.equal(requestBody.text.format.strict, true);
-  assert.match(requestBody.instructions, /不得提供医疗、法律或投资决策建议/);
-  assert.deepEqual(JSON.parse(requestBody.input), validRequest);
+  assert.equal(requestUrl, 'https://api.deepseek.com/chat/completions');
+  assert.equal(requestBody.model, 'deepseek-v4-pro');
+  assert.deepEqual(requestBody.thinking, { type: 'enabled' });
+  assert.equal(requestBody.reasoning_effort, 'high');
+  assert.deepEqual(requestBody.response_format, { type: 'json_object' });
+  assert.match(requestBody.messages[0].content, /不得提供医疗、法律或投资决策建议/);
+  assert.deepEqual(JSON.parse(requestBody.messages[1].content), validRequest);
 });
 
 test('maps malformed responses and timeouts to safe errors', async () => {
   const malformed = createReadingService({
     apiKey: 'test-key',
-    fetchImpl: async () => new Response(JSON.stringify({ output_text: '{}' }), { status: 200 }),
+    fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }] }), { status: 200 }),
   });
   await assert.rejects(malformed.generate(validRequest), (error) => error.code === 'INVALID_MODEL_OUTPUT');
 

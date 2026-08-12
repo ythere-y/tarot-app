@@ -51,31 +51,17 @@ export function validateReadingOutput(value) {
   ]));
 }
 
-const schema = {
-  type: 'object',
-  additionalProperties: false,
-  required: Object.keys(OUTPUT_LIMITS),
-  properties: Object.fromEntries(Object.entries(OUTPUT_LIMITS).map(([field, maxLength]) => [
-    field,
-    { type: 'string', minLength: 1, maxLength },
-  ])),
-};
-
-const instructions = `你是一个克制、温和的塔罗反思文案助手。只能依据用户消息中的固定主题、牌名、正逆位和标准牌义生成简体中文内容。使用“可能”“提醒”“可以考虑”等非确定性措辞，不得宣称预知事实、必然结果、诅咒或制造恐惧。不得提供医疗、法律或投资决策建议；财运主题只能讨论预算、审慎与目标反思。不得索取个人信息。action 必须是低风险、现实可行的小行动。disclaimer 必须说明内容仅供娱乐与自我反思。`;
+const instructions = `你是一个克制、温和的塔罗反思文案助手。只能依据用户消息中的固定主题、牌名、正逆位和标准牌义生成简体中文内容。使用“可能”“提醒”“可以考虑”等非确定性措辞，不得宣称预知事实、必然结果、诅咒或制造恐惧。不得提供医疗、法律或投资决策建议；财运主题只能讨论预算、审慎与目标反思。不得索取个人信息。action 必须是低风险、现实可行的小行动。disclaimer 必须说明内容仅供娱乐与自我反思。只返回一个 JSON 对象，且必须恰好包含 headline、reading、action、disclaimer 四个字符串字段。`;
 
 function outputText(payload) {
-  if (typeof payload?.output_text === 'string') return payload.output_text;
-  for (const item of payload?.output ?? []) {
-    for (const content of item?.content ?? []) {
-      if (typeof content?.text === 'string') return content.text;
-    }
-  }
-  return '';
+  return typeof payload?.choices?.[0]?.message?.content === 'string'
+    ? payload.choices[0].message.content
+    : '';
 }
 
 export function createReadingService({
   apiKey = '',
-  model = 'gpt-5.4-nano',
+  model = 'deepseek-v4-pro',
   fetchImpl = globalThis.fetch,
   timeoutMs = 12_000,
 } = {}) {
@@ -89,16 +75,21 @@ export function createReadingService({
       const abortFromOuter = () => timeoutController.abort();
       outerSignal?.addEventListener('abort', abortFromOuter, { once: true });
       try {
-        const response = await fetchImpl('https://api.openai.com/v1/responses', {
+        const response = await fetchImpl('https://api.deepseek.com/chat/completions', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           signal: timeoutController.signal,
           body: JSON.stringify({
             model,
-            instructions,
-            input: JSON.stringify(request),
-            max_output_tokens: 350,
-            text: { format: { type: 'json_schema', name: 'tarot_reading', strict: true, schema } },
+            messages: [
+              { role: 'system', content: instructions },
+              { role: 'user', content: JSON.stringify(request) },
+            ],
+            stream: false,
+            thinking: { type: 'enabled' },
+            reasoning_effort: 'high',
+            response_format: { type: 'json_object' },
+            max_tokens: 350,
           }),
         });
         if (!response.ok) throw new ReadingServiceError('AI_UPSTREAM_ERROR', 'AI 解读服务暂不可用');

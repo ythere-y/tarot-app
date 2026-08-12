@@ -36,7 +36,7 @@ async function readJson(req) {
 }
 
 export function createAppServer({ readingService, rateLimit } = {}) {
-  const service = readingService ?? createReadingService({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL });
+  const service = readingService ?? createReadingService({ apiKey: process.env.DEEPSEEK_API_KEY, model: process.env.DEEPSEEK_MODEL });
   const allow = createRateLimiter(rateLimit);
   return http.createServer(async (req, res) => {
     headers(res);
