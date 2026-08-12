@@ -4,8 +4,9 @@
   "description": "A tarot card drawing game using Three.js and MediaPipe Hands for gesture recognition.",
   "main": "index.html",
   "scripts": {
-    "start": "live-server",
-    "build": "webpack"
+    "start": "node server.mjs",
+    "build": "webpack",
+    "test": "node --test"
   },
   "dependencies": {
     "three": "^0.136.0",
