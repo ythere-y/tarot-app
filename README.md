@@ -1,5 +1,21 @@
 # 🔮 Ether Tarot
 
+## 受控 AI 星语（OpenAI）
+
+项目支持在抽牌后，根据固定主题、牌面、正逆位和本地标准牌义生成简短中文解读。浏览器不接触 API Key，也不接受自由文本问题；生成内容仅供娱乐与自我反思。
+
+要求 Node.js 20 或更高版本。安装并在 PowerShell 中启动：
+
+```powershell
+npm install
+$env:OPENAI_API_KEY='你的 OpenAI API Key'
+npm start
+```
+
+然后访问 [http://localhost:8080](http://localhost:8080)。默认模型为 `gpt-5.4-nano`，可用 `$env:OPENAI_MODEL` 覆盖，用 `$env:PORT` 修改端口。运行测试使用 `npm test`。
+
+不要把真实密钥写入仓库或前端代码。`.env.example` 仅列出变量名；服务直接读取进程环境变量。未配置密钥或上游不可用时，抽牌和固定牌义仍然可用。
+
 <p align="center">
   一款通过手势操控的沉浸式浏览器塔罗体验。<br>
   借助 MediaPipe Hands 与 Three.js，在完整的 78 张塔罗牌中抽取、翻开并解读属于你的牌。
