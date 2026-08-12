@@ -41,7 +41,7 @@ export function createThreeElementRenderer({ THREE, scene, profile, anchor }) {
   return {
     reveal(){ if(!disposed){phase='revealing'; material.opacity=.92; material.size=.095;} },
     settle(){ if(!disposed){phase='settled'; material.opacity=.58; material.size=.065;} },
-    update(dt){ if(disposed)return; elapsed+=Math.min(Math.max(dt||0,0),.1); for(let i=0;i<count;i++)updateParticle(i,elapsed); geometry.attributes.position.needsUpdate=true; points.rotation.z+=dt*.04; },
+    update(dt){ if(disposed)return; elapsed+=Math.min(Math.max(dt||0,0),.1); points.position.set(anchor.x||0,anchor.y||0,(anchor.z||0)+.08); for(let i=0;i<count;i++)updateParticle(i,elapsed); geometry.attributes.position.needsUpdate=true; points.rotation.z+=dt*.04; },
     dispose(){ if(disposed)return; disposed=true; scene.remove(points); geometry.dispose(); material.dispose(); phase='disposed'; },
     getSnapshot(){return {phase,particleCount:count,disposed};}
   };
