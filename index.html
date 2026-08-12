@@ -258,17 +258,25 @@
         // --- Deck Visuals ---
         function spawnDeck() {
             // Create a stack visual
-            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.02);
+            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.12);
             const material = new THREE.MeshStandardMaterial({ 
-                color: 0x333333, 
+                color: 0x4b356f,
                 map: backTexture,
-                roughness: 0.6 
+                emissive: 0x5a3b10,
+                emissiveIntensity: 0.38,
+                roughness: 0.55
             });
 
             // Create a "Deck" object to pick from
             const deckMesh = new THREE.Mesh(geometry, material);
             deckMesh.position.set(0, -2, 0);
             deckMesh.userData = { isDeck: true };
+            const outline = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.95 })
+            );
+            outline.raycast = () => {};
+            deckMesh.add(outline);
             cardGroup.add(deckMesh);
         }
         spawnDeck();
