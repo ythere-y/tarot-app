@@ -374,7 +374,14 @@
 
             const matSide = new THREE.MeshStandardMaterial({ color: 0x111111 });
             const matBack = new THREE.MeshStandardMaterial({ map: backTexture });
-            const matFront = new THREE.MeshStandardMaterial({ map: tex, transparent: true });
+            const matFront = new THREE.MeshStandardMaterial({
+                map: tex,
+                transparent: true,
+                color: 0xffffff,
+                emissive: 0x2b2110,
+                emissiveIntensity: 0.3,
+                roughness: 0.82
+            });
 
             const materialArray = [matSide, matSide, matSide, matSide, matFront, matBack];
 

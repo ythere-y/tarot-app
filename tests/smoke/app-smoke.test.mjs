@@ -11,6 +11,8 @@ test('app exposes five topics and AI reading contract', async () => {
     const html = await (await fetch(base)).text();
     for (const label of ['综合', '感情', '事业', '财运', '成长']) assert.match(html, new RegExp(label));
     for (const id of ['ai-headline', 'ai-text', 'ai-action', 'ai-disclaimer']) assert.match(html, new RegExp(`id="${id}"`));
+    assert.match(html, /emissive:\s*0x2b2110/);
+    assert.match(html, /emissiveIntensity:\s*0\.3/);
     const response = await fetch(`${base}/api/reading`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ topic: 'general', cardName: 'The Fool', orientation: 'upright', standardMeaning: '新的开始。' }) });
     assert.deepEqual(await response.json(), expected);
   } finally { await new Promise((resolve) => server.close(resolve)); }
