@@ -17,7 +17,10 @@ test('serves the app with security headers', async () => withServer({}, async (b
   assert.equal(response.status, 200);
   assert.match(await response.text(), /Ether Tarot/);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
-  assert.ok(response.headers.get('content-security-policy'));
+  const csp = response.headers.get('content-security-policy');
+  assert.ok(csp);
+  assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
+  assert.match(csp, /worker-src[^;]*blob:/);
 }));
 
 test('returns a generated reading and rejects invalid API requests', async () => withServer({
