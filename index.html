@@ -29,6 +29,15 @@
         }
         #result-title { font-size: 3em; font-weight: bold; text-shadow: 0 0 10px #f0f; margin: 0; }
         #result-meaning { font-size: 1.2em; color: #aaa; margin-top: 10px; max-width: 600px; margin-left: auto; margin-right: auto; }
+        #topic-picker { pointer-events: auto; margin-top: 10px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+        #topic-picker button { font-size: 0.78em; padding: 6px 4px; margin: 0; }
+        #topic-picker button[aria-pressed="true"] { color: #ffe8a3; border-color: #d6a84b; background: #3a2910; }
+        #ai-reading { max-width: 620px; margin: 14px auto 0; padding: 14px; border: 1px solid rgba(214,168,75,.55); background: rgba(8,5,18,.88); border-radius: 10px; pointer-events: auto; }
+        #ai-headline { margin: 0 0 8px; color: #ffe8a3; font-size: 1.15em; }
+        #ai-text, #ai-action { margin: 6px 0; line-height: 1.55; }
+        #ai-action { color: #b8dfcf; }
+        #ai-disclaimer { color: #888; font-size: .72em; }
+        #ai-retry { width: auto; margin-top: 8px; }
         .reversed-tag { color: #ff4444; font-size: 0.6em; border: 1px solid #ff4444; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 10px; }
 
         /* History Panel */
@@ -71,6 +80,9 @@
             <div class="controls">
                 <h3>🔮 Ether Tarot</h3>
                 <button id="btn-mode">切换模式: ✋ 手势</button>
+                <div id="topic-picker" aria-label="选择 AI 解读主题">
+                    <button type="button" data-topic="general" aria-pressed="true">综合</button><button type="button" data-topic="love" aria-pressed="false">感情</button><button type="button" data-topic="career" aria-pressed="false">事业</button><button type="button" data-topic="wealth" aria-pressed="false">财运</button><button type="button" data-topic="growth" aria-pressed="false">成长</button>
+                </div>
                 <div style="font-size: 0.8em; margin-top: 5px; color: #aaa;">
                     ✋ 张开: 悬停<br>
                     👌 捏合: 抓牌<br>
@@ -86,6 +98,11 @@
         <div id="result-display">
             <h1 id="result-title">THE FOOL</h1>
             <div id="result-meaning">The beginning of a journey, innocence, spontaneity.</div>
+            <section id="ai-reading" aria-live="polite">
+                <h2 id="ai-headline">抽牌后生成星语</h2><p id="ai-text">选择主题，然后完成一次抽牌。</p>
+                <p id="ai-action" hidden></p><small id="ai-disclaimer">AI 生成 · 仅供娱乐与自我反思</small><br>
+                <button id="ai-retry" type="button" hidden>重试 AI 解读</button>
+            </section>
         </div>
 
         <div id="history-panel">
@@ -95,6 +112,20 @@
 
     <script type="module">
         import * as THREE from 'three';
+        import { createReadingController } from './src/client/reading.js';
+
+        const aiElements = { headline: document.getElementById('ai-headline'), text: document.getElementById('ai-text'), action: document.getElementById('ai-action'), disclaimer: document.getElementById('ai-disclaimer'), retry: document.getElementById('ai-retry') };
+        let lastReadingCard = null;
+        const readingController = createReadingController({ view: {
+            showLoading() { aiElements.headline.textContent = '星语生成中…'; aiElements.text.textContent = '正在结合牌面与所选主题生成受控解读。'; aiElements.action.hidden = true; aiElements.retry.hidden = true; },
+            showSuccess(value) { aiElements.headline.textContent = value.headline; aiElements.text.textContent = value.reading; aiElements.action.textContent = `行动提示：${value.action}`; aiElements.action.hidden = false; aiElements.disclaimer.textContent = `AI 生成 · ${value.disclaimer}`; aiElements.retry.hidden = true; },
+            showError(message) { aiElements.headline.textContent = 'AI 解读暂不可用'; aiElements.text.textContent = `${message} 固定牌义仍可正常参考。`; aiElements.action.hidden = true; aiElements.retry.hidden = false; }
+        }});
+        document.querySelectorAll('#topic-picker button').forEach(button => button.addEventListener('click', () => {
+            readingController.setTopic(button.dataset.topic);
+            document.querySelectorAll('#topic-picker button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        }));
+        aiElements.retry.addEventListener('click', () => lastReadingCard && readingController.requestReading(lastReadingCard));
 
         // --- Configuration ---
         const CONFIG = {
@@ -381,6 +412,8 @@
             
             title.innerHTML = nameText;
             meaning.innerText = isRev ? data.meaningRev : data.meaningUp;
+            lastReadingCard = { cardName: data.name, orientation: isRev ? 'reversed' : 'upright', standardMeaning: isRev ? data.meaningRev : data.meaningUp };
+            readingController.requestReading(lastReadingCard);
             
             display.style.opacity = 1;
 
