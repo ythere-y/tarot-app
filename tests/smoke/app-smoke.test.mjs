@@ -11,10 +11,11 @@ test('app exposes five topics and AI reading contract', async () => {
     const html = await (await fetch(base)).text();
     for (const label of ['综合', '感情', '事业', '财运', '成长']) assert.match(html, new RegExp(label));
     for (const id of ['ai-headline', 'ai-text', 'ai-action', 'ai-disclaimer']) assert.match(html, new RegExp(`id="${id}"`));
-    assert.match(html, /const matFront = new THREE\.MeshBasicMaterial/);
+    assert.match(html, /const matFront = new THREE\.ShaderMaterial/);
     assert.match(html, /tex\.anisotropy = renderer\.capabilities\.getMaxAnisotropy\(\)/);
     assert.match(html, /new THREE\.LineBasicMaterial\(\{ color: 0xffdf82/);
-    assert.doesNotMatch(html, /emissive:\s*0x665f52/);
+    assert.match(html, /saturation:\s*\{ value: 1\.25 \}/);
+    assert.match(html, /contrast:\s*\{ value: 1\.15 \}/);
     assert.match(html, /color:\s*0x4b356f/);
     assert.match(html, /emissive:\s*0x5a3b10/);
     assert.match(html, /cardHeight,\s*0\.12/);

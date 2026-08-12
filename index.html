@@ -383,11 +383,34 @@
 
             const matSide = new THREE.MeshStandardMaterial({ color: 0x111111 });
             const matBack = new THREE.MeshStandardMaterial({ map: backTexture });
-            const matFront = new THREE.MeshBasicMaterial({
-                map: tex,
+            const matFront = new THREE.ShaderMaterial({
                 transparent: true,
-                color: 0xffffff,
-                toneMapped: false
+                toneMapped: false,
+                uniforms: {
+                    cardTexture: { value: tex },
+                    saturation: { value: 1.25 },
+                    contrast: { value: 1.15 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D cardTexture;
+                    uniform float saturation;
+                    uniform float contrast;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 sampled = texture2D(cardTexture, vUv);
+                        float luminance = dot(sampled.rgb, vec3(0.2126, 0.7152, 0.0722));
+                        vec3 saturated = mix(vec3(luminance), sampled.rgb, saturation);
+                        vec3 contrasted = (saturated - 0.5) * contrast + 0.5;
+                        gl_FragColor = vec4(clamp(contrasted, 0.0, 1.0), sampled.a);
+                    }
+                `
             });
 
             const materialArray = [matSide, matSide, matSide, matSide, matFront, matBack];
