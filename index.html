@@ -113,6 +113,8 @@
     <script type="module">
         import * as THREE from 'three';
         import { createReadingController } from './src/client/reading.js';
+        import { createMinorEffectController } from './src/client/effects/minor-effect-controller.js';
+        import { createThreeElementRenderer } from './src/client/effects/three-element-renderer.js';
 
         const aiElements = { headline: document.getElementById('ai-headline'), text: document.getElementById('ai-text'), action: document.getElementById('ai-action'), disclaimer: document.getElementById('ai-disclaimer'), retry: document.getElementById('ai-retry') };
         let lastReadingCard = null;
@@ -185,6 +187,7 @@
                     id: idCounter++, 
                     name: `${rank} of ${suit}`, 
                     type: 'minor',
+                    suit,
                     img: `../tarot_img/${suit}_${rank}.jpg`, 
                     meaningUp: `${suit} 正位含义 - 能量流动`, 
                     meaningRev: `${suit} 逆位含义 - 能量受阻` 
@@ -198,6 +201,13 @@
         // --- Three.js Setup ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
+        const effectTier = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'reduced'
+            : ((navigator.hardwareConcurrency || 4) <= 4 ? 'low' : 'standard');
+        const elementEffect = createMinorEffectController({
+            tier: effectTier,
+            rendererFactory: ({ profile, anchor }) => createThreeElementRenderer({ THREE, scene, profile, anchor })
+        });
         scene.fog = new THREE.FogExp2(0x050505, 0.02);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -435,6 +445,7 @@
             // Start invisible/small? No, just appear at hand
             scene.add(mesh);
             STATE.heldCard = mesh;
+            elementEffect.prepare(draw.data, draw.isReversed ? 'reversed' : 'upright', mesh.position);
             return mesh;
         }
 
@@ -468,12 +479,15 @@
             historyPanel.prepend(log);
 
             // 3. Ash Effect
+            elementEffect.reveal();
+            setTimeout(() => elementEffect.settle(), 650);
             triggerAshEffect(STATE.heldCard);
             STATE.heldCard = null;
 
             // 4. Reset after delay
             setTimeout(() => {
                 display.style.opacity = 0;
+                elementEffect.dispose();
                 STATE.locked = false;
             }, 4000);
         }
@@ -688,6 +702,7 @@
 
             updateInteraction(dt);
             updateParticles(dt);
+            elementEffect.update(dt);
 
             renderer.render(scene, camera);
         }

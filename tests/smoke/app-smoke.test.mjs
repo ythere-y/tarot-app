@@ -20,6 +20,13 @@ test('app exposes five topics and AI reading contract', async () => {
     assert.match(html, /emissive:\s*0x5a3b10/);
     assert.match(html, /cardHeight,\s*0\.12/);
     assert.match(html, /new THREE\.EdgesGeometry\(geometry\)/);
+    assert.match(html, /createMinorEffectController/);
+    assert.match(html, /createThreeElementRenderer/);
+    assert.match(html, /elementEffect\.prepare\(draw\.data/);
+    assert.match(html, /elementEffect\.reveal\(\)/);
+    assert.match(html, /elementEffect\.settle\(\)/);
+    assert.match(html, /elementEffect\.update\(dt\)/);
+    assert.match(html, /suit,/);
     const response = await fetch(`${base}/api/reading`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ topic: 'general', cardName: 'The Fool', orientation: 'upright', standardMeaning: '新的开始。' }) });
     assert.deepEqual(await response.json(), expected);
   } finally { await new Promise((resolve) => server.close(resolve)); }
