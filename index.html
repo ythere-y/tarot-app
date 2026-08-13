@@ -398,8 +398,8 @@
                 toneMapped: false,
                 uniforms: {
                     cardTexture: { value: tex },
-                    saturation: { value: 1.25 },
-                    contrast: { value: 1.15 }
+                    saturation: { value: 1.04 },
+                    contrast: { value: 1.06 }
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -418,7 +418,8 @@
                         float luminance = dot(sampled.rgb, vec3(0.2126, 0.7152, 0.0722));
                         vec3 saturated = mix(vec3(luminance), sampled.rgb, saturation);
                         vec3 contrasted = (saturated - 0.5) * contrast + 0.5;
-                        gl_FragColor = vec4(clamp(contrasted, 0.0, 1.0), sampled.a);
+                        vec3 softClipped = contrasted / (1.0 + max(contrasted - 0.92, 0.0) * 1.6);
+                        gl_FragColor = vec4(clamp(softClipped, 0.0, 1.0), sampled.a);
                     }
                 `
             });
