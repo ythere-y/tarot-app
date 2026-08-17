@@ -86,10 +86,9 @@ export function createReadingService({
               { role: 'user', content: JSON.stringify(request) },
             ],
             stream: false,
-            thinking: { type: 'enabled' },
-            reasoning_effort: 'high',
+            thinking: { type: 'disabled' },
             response_format: { type: 'json_object' },
-            max_tokens: 350,
+            max_tokens: 500,
           }),
         });
         if (!response.ok) throw new ReadingServiceError('AI_UPSTREAM_ERROR', 'AI 解读服务暂不可用');

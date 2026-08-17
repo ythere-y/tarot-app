@@ -56,7 +56,7 @@ test('requires a server-side API key', async () => {
   });
 });
 
-test('calls DeepSeek V4 Pro with thinking enabled and parses JSON output', async () => {
+test('calls DeepSeek V4 Pro without thinking and parses JSON output', async () => {
   let requestUrl;
   let requestBody;
   const service = createReadingService({
@@ -72,8 +72,9 @@ test('calls DeepSeek V4 Pro with thinking enabled and parses JSON output', async
   assert.deepEqual(await service.generate(validRequest), validOutput);
   assert.equal(requestUrl, 'https://api.deepseek.com/chat/completions');
   assert.equal(requestBody.model, 'deepseek-v4-pro');
-  assert.deepEqual(requestBody.thinking, { type: 'enabled' });
-  assert.equal(requestBody.reasoning_effort, 'high');
+  assert.deepEqual(requestBody.thinking, { type: 'disabled' });
+  assert.equal('reasoning_effort' in requestBody, false);
+  assert.equal(requestBody.max_tokens, 500);
   assert.deepEqual(requestBody.response_format, { type: 'json_object' });
   assert.match(requestBody.messages[0].content, /不得提供医疗、法律或投资决策建议/);
   assert.deepEqual(JSON.parse(requestBody.messages[1].content), validRequest);
