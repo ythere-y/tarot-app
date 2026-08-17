@@ -1,0 +1,57 @@
+Ether Tarot third-party notices
+================================
+
+Project code
+------------
+
+The source code and original project documentation authored for this
+repository are released under the MIT License in LICENSE.
+
+That MIT grant does not assert ownership of, or grant rights to, the
+third-party binaries and artwork called out below.
+
+MediaPipe Tasks Vision
+----------------------
+
+The application depends on @mediapipe/tasks-vision 0.10.35. The package,
+including the WebAssembly runtime copied into the production build by
+scripts/prepare-mediapipe-assets.mjs, identifies its license as Apache-2.0.
+
+Upstream project: https://github.com/google-ai-edge/mediapipe
+Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
+Copyright: The MediaPipe Authors / Google LLC, as identified upstream.
+
+Hand Landmarker model asset
+---------------------------
+
+The repository contains:
+
+  public/mediapipe/models/hand_landmarker.task
+  SHA-256: FBC2A30080C3C557093B5DDFC334698132EB341044CCEE322CCF8BCF3607CDE1
+
+The repository history does not record this binary's original download URL,
+version, copyright notice, or asset-specific license. The repository owner
+must confirm its provenance, redistribution terms, and any required notices
+before public release. This notice does not assume that the Apache-2.0 license
+for MediaPipe source code and @mediapipe/tasks-vision automatically covers
+this separately supplied model asset.
+
+Tarot artwork
+-------------
+
+The repository contains 78 card-face JPEG files and tarot_img/cover.jpg. The
+repository history does not identify the artist, source collection, copyright
+holder, or license for those images.
+
+The repository owner must confirm that the project has the right to
+redistribute every image before public release and must add the correct
+attribution and license terms when known. No artwork permission or license is
+claimed by this notice, and the project's MIT License must not be read as
+covering these images.
+
+Other dependencies
+------------------
+
+Additional JavaScript dependency names, versions, integrity hashes, and
+declared licenses are recorded in package-lock.json and their distributed
+package metadata. Their respective licenses continue to apply.
