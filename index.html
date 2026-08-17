@@ -1,17 +1,775 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20fill='%23080714'/%3E%3Cpath%20d='M32%206%2058%2032%2032%2058%206%2032Z'%20fill='none'%20stroke='%23c84c3b'%20stroke-width='4'/%3E%3C/svg%3E"
-    />
-    <title>Ether Tarot</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <noscript>此应用需要启用 JavaScript。</noscript>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ether Tarot - Three.js & MediaPipe</title>
+    <style>
+        :root { --ink:#070711; --paper:#f5f0ff; --muted:#9890aa; --violet:#9b7cff; --mint:#54e8c4; --rose:#ff5ebc; --line:rgba(190,174,235,.24); }
+        * { box-sizing:border-box; }
+        body { margin:0; overflow:hidden; background:radial-gradient(circle at 50% 44%,#171128 0,#080711 48%,#040408 100%); font-family:Inter,ui-sans-serif,system-ui,sans-serif; color:var(--paper); }
+        body::before { content:""; position:fixed; inset:0; pointer-events:none; background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:40px 40px; mask-image:linear-gradient(to bottom,black,transparent 85%); }
+        #canvas-container { position:absolute; inset:0; z-index:1; background:#070711; }
+        #canvas-container::after { content:""; position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 45%,rgba(23,16,43,.12),rgba(5,5,12,.44) 72%); mix-blend-mode:multiply; }
+        #ui-layer { --ui-focus:1; position:absolute; inset:0; z-index:2; pointer-events:none; padding:clamp(18px,3vw,42px); display:grid; grid-template-columns:minmax(250px,330px) 1fr minmax(220px,290px); grid-template-rows:auto 1fr auto; gap:22px; }
+        .oracle-header { grid-column:1; grid-row:1; align-self:start; opacity:var(--ui-focus); }
+        .eyebrow { color:var(--mint); font-size:10px; letter-spacing:.34em; text-transform:uppercase; }
+        .oracle-header h1 { font-family:Georgia,'Times New Roman',serif; font-weight:400; font-size:clamp(36px,4.7vw,72px); line-height:.88; letter-spacing:-.05em; margin:14px 0 12px; }
+        .oracle-header p { color:var(--muted); font-size:12px; line-height:1.6; max-width:260px; margin:0; }
+        .oracle-console,.status-panel,#history-panel { pointer-events:auto; background:linear-gradient(145deg,rgba(16,13,29,.86),rgba(7,7,15,.62)); border:1px solid var(--line); backdrop-filter:blur(16px); box-shadow:0 18px 60px rgba(0,0,0,.28); }
+        .oracle-console { grid-column:1; grid-row:2; align-self:end; padding:16px; opacity:var(--ui-focus); }
+        .console-label { color:var(--muted); font-size:9px; letter-spacing:.24em; margin-bottom:10px; text-transform:uppercase; }
+        button { position:relative; overflow:hidden; background:rgba(255,255,255,.035); color:var(--paper); border:1px solid var(--line); padding:9px 11px; cursor:pointer; transition:transform .18s ease,border-color .18s,color .18s,background .18s; width:100%; font:600 10px/1.2 inherit; letter-spacing:.08em; text-transform:uppercase; }
+        button:hover { transform:translateY(-2px); border-color:var(--mint); color:var(--mint); background:rgba(84,232,196,.08); }
+        #topic-picker { margin-top:8px; display:grid; grid-template-columns:repeat(5,1fr); gap:4px; }
+        #topic-picker button { padding:7px 2px; font-size:9px; }
+        #topic-picker button[aria-pressed="true"] { color:#080711; border-color:var(--mint); background:var(--mint); }
+        .gesture-guide { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:14px; color:var(--muted); font-size:9px; line-height:1.35; }
+        .gesture-guide span { border-top:1px solid var(--line); padding-top:7px; }
+        .status-panel { grid-column:3; grid-row:1; padding:14px 16px; opacity:var(--ui-focus); }
+        .status-row { display:flex; justify-content:space-between; align-items:center; gap:12px; color:var(--muted); font-size:9px; letter-spacing:.18em; text-transform:uppercase; }
+        .status-row + .status-row { border-top:1px solid var(--line); margin-top:10px; padding-top:10px; }
+        #status-text,#deck-count { color:var(--paper); font-size:12px; letter-spacing:.04em; text-transform:none; }
+        #gesture-icon { color:var(--mint); font-size:18px; min-width:24px; text-align:center; }
+        #result-display { position:absolute; top:50%; left:50%; width:min(680px,calc(100vw - 40px)); transform:translate(-50%,-50%); text-align:center; opacity:0; pointer-events:none; padding:30px; background:radial-gradient(ellipse,rgba(12,8,23,.94),rgba(8,6,16,.74) 58%,transparent 75%); }
+        #result-title { font-family:Georgia,'Times New Roman',serif; font-size:clamp(42px,6vw,78px); font-weight:400; line-height:.95; margin:0; text-shadow:0 0 35px rgba(155,124,255,.35); }
+        #result-meaning { color:#c8c0d5; margin:14px auto 0; max-width:570px; font:14px/1.7 Georgia,serif; }
+        #ai-reading { max-width:590px; margin:18px auto 0; padding:15px 18px; border-top:1px solid rgba(84,232,196,.45); background:rgba(8,7,17,.72); pointer-events:auto; }
+        #ai-reading[data-state="loading"]::before { content:""; display:block; height:1px; margin:-16px -18px 14px; background:linear-gradient(90deg,transparent,var(--mint),transparent); animation:oracle-scan 1.5s ease-in-out infinite; }
+        #ai-headline { margin:0 0 7px; color:var(--mint); font:600 10px/1.2 inherit; letter-spacing:.18em; text-transform:uppercase; }
+        #ai-text,#ai-action { margin:6px 0; font-size:12px; line-height:1.6; }
+        #ai-action { color:#bdebdc; } #ai-disclaimer { color:#777083; font-size:9px; } #ai-retry { width:auto; margin-top:8px; }
+        .reversed-tag { color:var(--rose); font:600 10px/1 inherit; border:1px solid var(--rose); padding:4px 7px; vertical-align:middle; margin-left:10px; letter-spacing:.08em; }
+        #history-panel { grid-column:3; grid-row:2 / 4; align-self:end; max-height:210px; overflow-y:auto; padding:14px 16px; opacity:var(--ui-focus); scrollbar-width:thin; scrollbar-color:var(--violet) transparent; }
+        .history-kicker { color:var(--violet); font-size:9px; letter-spacing:.2em; padding-bottom:10px; border-bottom:1px solid var(--line); }
+        .history-item { border-bottom:1px solid var(--line); padding:10px 0; display:flex; justify-content:space-between; font-size:11px; }
+        .history-name { color:#d9d1e7; }
+        .stage-orbit { position:absolute; z-index:1; left:50%; top:50%; width:min(48vw,620px); aspect-ratio:1; transform:translate(-50%,-50%); border:1px solid rgba(155,124,255,.14); border-radius:50%; pointer-events:none; }
+        .stage-orbit::before { content:""; position:absolute; inset:14%; border:1px dashed rgba(84,232,196,.12); border-radius:50%; }
+        #input_video { position:absolute; width:1px; height:1px; opacity:0; }
+        #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10; color:var(--mint); background:rgba(5,5,12,.92); border:1px solid var(--line); padding:18px 24px; font-size:11px; letter-spacing:.16em; text-transform:uppercase; }
+        @keyframes oracle-scan { 0%,100%{transform:scaleX(.2);opacity:.35} 50%{transform:scaleX(1);opacity:1} }
+        @media (max-width: 800px) { body{overflow:auto} #ui-layer{padding:16px;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto auto} .oracle-header{grid-column:1}.oracle-header h1{font-size:36px}.status-panel{grid-column:2}.oracle-console{grid-column:1 / 3;grid-row:3}.gesture-guide{display:none} #history-panel{grid-column:1 / 3;grid-row:4;position:relative;max-height:120px}.stage-orbit{width:78vw} #result-display{top:44%;padding:20px} }
+        @media (max-width: 520px) { #ui-layer{display:flex;flex-direction:column}.oracle-header p{display:none}.oracle-header h1{font-size:30px}.status-panel{position:absolute;right:16px;top:16px;width:44%}.oracle-console{margin-top:auto;align-self:stretch;width:100%} #topic-picker{grid-template-columns:repeat(5,1fr)} #history-panel{align-self:stretch;width:100%;max-height:88px} #result-title{font-size:38px} #ai-reading{padding:12px} }
+        @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; transition-duration:.01ms!important; } }
+    </style>
+    <style id="legacy-styles" media="not all">
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', Courier, monospace; color: #ddd; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* UI Overlay */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        
+        .top-bar { display: flex; justify-content: space-between; align-items: flex-start; pointer-events: auto; }
+        .controls { background: rgba(0,0,0,0.7); padding: 10px; border: 1px solid #444; border-radius: 8px; }
+        button { background: #222; color: #fff; border: 1px solid #666; padding: 5px 10px; cursor: pointer; transition: 0.3s; margin-bottom: 5px; width: 100%; }
+        button:hover { background: #444; border-color: #aaa; }
+        button.active { background: #004400; border-color: #0f0; }
+
+        .status-panel { text-align: right; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; }
+        #gesture-icon { font-size: 24px; display: inline-block; width: 30px; text-align: center; }
+        
+        /* Center Result Display */
+        #result-display { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            text-align: center; opacity: 0; transition: opacity 1s; pointer-events: none;
+            background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 50%, rgba(0,0,0,0) 100%);
+            padding: 40px; width: 100%;
+        }
+        #result-title { font-size: 3em; font-weight: bold; text-shadow: 0 0 10px #f0f; margin: 0; }
+        #result-meaning { font-size: 1.2em; color: #aaa; margin-top: 10px; max-width: 600px; margin-left: auto; margin-right: auto; }
+        #topic-picker { pointer-events: auto; margin-top: 10px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+        #topic-picker button { font-size: 0.78em; padding: 6px 4px; margin: 0; }
+        #topic-picker button[aria-pressed="true"] { color: #ffe8a3; border-color: #d6a84b; background: #3a2910; }
+        #ai-reading { max-width: 620px; margin: 14px auto 0; padding: 14px; border: 1px solid rgba(214,168,75,.55); background: rgba(8,5,18,.88); border-radius: 10px; pointer-events: auto; }
+        #ai-headline { margin: 0 0 8px; color: #ffe8a3; font-size: 1.15em; }
+        #ai-text, #ai-action { margin: 6px 0; line-height: 1.55; }
+        #ai-action { color: #b8dfcf; }
+        #ai-disclaimer { color: #888; font-size: .72em; }
+        #ai-retry { width: auto; margin-top: 8px; }
+        .reversed-tag { color: #ff4444; font-size: 0.6em; border: 1px solid #ff4444; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 10px; }
+
+        /* History Panel */
+        #history-panel { 
+            pointer-events: auto; background: rgba(10,10,15,0.8); border-top: 2px solid #333; 
+            height: 150px; overflow-y: auto; padding: 10px; margin-bottom: 0; font-size: 0.9em;
+            scrollbar-width: thin; scrollbar-color: #444 #111;
+        }
+        .history-item { border-bottom: 1px solid #333; padding: 5px 0; display: flex; justify-content: space-between; }
+        .history-name { color: #dcb; }
+        
+        /* Video hidden but needed for MediaPipe */
+        #input_video { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
+        
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; color: #0ff; z-index: 10; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 10px; }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <video id="input_video"></video>
+    <div id="loading">初始化神谕系统 (加载模型中)...</div>
+
+    <div id="canvas-container"></div>
+    <div class="stage-orbit" aria-hidden="true"></div>
+
+    <div id="ui-layer">
+        <header class="oracle-header editorial-intro">
+            <div class="eyebrow">ARCANA / SESSION 01</div>
+            <h1>Ether<br>Tarot</h1>
+            <p>THE INTERACTIVE ARCANA<br>让牌面在你的手势与直觉之间显现。</p>
+        </header>
+            <section class="oracle-console editorial-intro" aria-label="神谕控制台">
+                <div class="console-label">Oracle console · 神谕控制台</div>
+                <button id="btn-mode">切换模式: ✋ 手势</button>
+                <div id="topic-picker" aria-label="选择 AI 解读主题">
+                    <button type="button" data-topic="general" aria-pressed="true">综合</button><button type="button" data-topic="love" aria-pressed="false">感情</button><button type="button" data-topic="career" aria-pressed="false">事业</button><button type="button" data-topic="wealth" aria-pressed="false">财运</button><button type="button" data-topic="growth" aria-pressed="false">成长</button>
+                </div>
+                <div class="gesture-guide">
+                    <span>01 张开<br>悬停</span><span>02 捏合<br>抓牌</span><span>03 握拳<br>揭示</span>
+                </div>
+            </section>
+            <aside class="status-panel editorial-intro" aria-label="当前状态">
+                <div class="status-row"><span>Connection</span><span><span id="status-text">等待连接...</span> <span id="gesture-icon">—</span></span></div>
+                <div class="status-row"><span>Remaining</span><span id="deck-count">78</span></div>
+            </aside>
+
+        <div id="result-display">
+            <h1 id="result-title">THE FOOL</h1>
+            <div id="result-meaning">The beginning of a journey, innocence, spontaneity.</div>
+            <section id="ai-reading" aria-live="polite">
+                <h2 id="ai-headline">抽牌后生成星语</h2><p id="ai-text">选择主题，然后完成一次抽牌。</p>
+                <p id="ai-action" hidden></p><small id="ai-disclaimer">AI 生成 · 仅供娱乐与自我反思</small><br>
+                <button id="ai-retry" type="button" hidden>重试 AI 解读</button>
+            </section>
+        </div>
+
+        <aside id="history-panel" class="editorial-intro" aria-label="抽牌记录"><div class="history-kicker">ARCHIVE · 抽牌记录</div></aside>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { createReadingController } from './src/client/reading.js';
+        import { createMinorEffectController } from './src/client/effects/minor-effect-controller.js';
+        import { createThreeElementRenderer } from './src/client/effects/three-element-renderer.js';
+        import { animate as animeAnimate, createTimeline, stagger } from '/vendor/anime.esm.js';
+        import { createUiMotion } from './src/client/ui-motion.js';
+
+        const uiMotion = createUiMotion({ anime: { animate: animeAnimate, createTimeline, stagger } });
+        uiMotion.intro();
+        window.addEventListener('pagehide', () => uiMotion.destroy(), { once: true });
+
+        const aiElements = { headline: document.getElementById('ai-headline'), text: document.getElementById('ai-text'), action: document.getElementById('ai-action'), disclaimer: document.getElementById('ai-disclaimer'), retry: document.getElementById('ai-retry') };
+        let lastReadingCard = null;
+        const readingController = createReadingController({ view: {
+            showLoading() { aiElements.headline.textContent = '星语生成中…'; aiElements.text.textContent = '正在结合牌面与所选主题生成受控解读。'; aiElements.action.hidden = true; aiElements.retry.hidden = true; uiMotion.setAiState('loading'); },
+            showSuccess(value) { aiElements.headline.textContent = value.headline; aiElements.text.textContent = value.reading; aiElements.action.textContent = `行动提示：${value.action}`; aiElements.action.hidden = false; aiElements.disclaimer.textContent = `AI 生成 · ${value.disclaimer}`; aiElements.retry.hidden = true; uiMotion.setAiState('success'); },
+            showError(message) { aiElements.headline.textContent = 'AI 解读暂不可用'; aiElements.text.textContent = `${message} 固定牌义仍可正常参考。`; aiElements.action.hidden = true; aiElements.retry.hidden = false; uiMotion.setAiState('error'); }
+        }});
+        document.querySelectorAll('#topic-picker button').forEach(button => button.addEventListener('click', () => {
+            readingController.setTopic(button.dataset.topic);
+            document.querySelectorAll('#topic-picker button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        }));
+        aiElements.retry.addEventListener('click', () => lastReadingCard && readingController.requestReading(lastReadingCard));
+
+        // --- Configuration ---
+        const CONFIG = {
+            cardWidth: 2.5,
+            cardHeight: 4.3,
+            zIndexPinch: 0.04, // Threshold for pinch
+            cameraZ: 12,
+            dragSpeed: 0.15,
+            particleLife: 2.0 // Seconds
+        };
+
+        // --- State Management ---
+        const STATE = {
+            mode: 'gesture', // 'gesture' or 'mouse'
+            gesture: 'NONE', // OPEN, PINCH, FIST, POINT
+            handVisible: false,
+            pointer: new THREE.Vector2(), // Normalized screen coordinates
+            isInteracting: false, // Pinching or MouseDown
+            heldCard: null, // The THREE object currently being dragged
+            drawnCardData: null, // The data of the card being held
+            deck: [], // Array of remaining card indices
+            locked: false // If true, animation is playing, input blocked
+        };
+
+        // --- Tarot Data (Simplified RWS) ---
+        // Using a placeholder generator for images, but mapping names correctly.
+        // In a real app, replace `imageUrl` with real CDN links.
+        const TAROT_DATA = [];
+        const SUITS = ['Wands', 'Cups', 'Swords', 'Pentacles'];
+        const RANKS = ['Ace', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Page', 'Knight', 'Queen', 'King'];
+        const MAJOR = [
+            'The Fool', 'The Magician', 'The High Priestess', 'The Empress', 'The Emperor', 
+            'The Hierophant', 'The Lovers', 'The Chariot', 'Strength', 'The Hermit', 
+            'Wheel of Fortune', 'Justice', 'The Hanged Man', 'Death', 'Temperance', 
+            'The Devil', 'The Tower', 'The Star', 'The Moon', 'The Sun', 
+            'Judgement', 'The World'
+        ];
+
+        // Generate Data
+        let idCounter = 0;
+        // Majors
+        MAJOR.forEach((name, i) => {
+            TAROT_DATA.push({ 
+                id: idCounter++, 
+                name: name, 
+                type: 'major',
+                // Using local images
+                img: `../tarot_img/${i < 10 ? '0' + i : i}.jpg`, 
+                meaningUp: "新的开始，自由，纯真。", 
+                meaningRev: "鲁莽，冒险，愚蠢。" 
+            });
+        });
+        // Minors (Simplified generation for demo code length)
+        SUITS.forEach(suit => {
+            RANKS.forEach(rank => {
+                TAROT_DATA.push({ 
+                    id: idCounter++, 
+                    name: `${rank} of ${suit}`, 
+                    type: 'minor',
+                    suit,
+                    img: `../tarot_img/${suit}_${rank}.jpg`, 
+                    meaningUp: `${suit} 正位含义 - 能量流动`, 
+                    meaningRev: `${suit} 逆位含义 - 能量受阻` 
+                });
+            });
+        });
+
+        // Initialize Deck
+        STATE.deck = TAROT_DATA.map(c => c.id);
+
+        // --- Three.js Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const effectTier = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'reduced'
+            : ((navigator.hardwareConcurrency || 4) <= 4 ? 'low' : 'standard');
+        const elementEffect = createMinorEffectController({
+            tier: effectTier,
+            rendererFactory: ({ profile, anchor }) => createThreeElementRenderer({ THREE, scene, profile, anchor })
+        });
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.z = CONFIG.cameraZ;
+        camera.position.y = 2;
+        camera.lookAt(0,0,0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setClearColor(0x070711, 1);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0xffaa00, 1.5, 20);
+        pointLight.position.set(0, 5, 5);
+        scene.add(pointLight);
+
+        // --- Texture Loader ---
+        const textureLoader = new THREE.TextureLoader();
+        const backTexture = textureLoader.load('https://upload.wikimedia.org/wikipedia/commons/d/d4/RWS_Tarot_Card_Back.jpg'); // Standard RWS Back
+        const defaultFront = textureLoader.load('https://via.placeholder.com/300x520/222/555?text=Tarot');
+
+        // --- Objects ---
+        const cardGroup = new THREE.Group();
+        scene.add(cardGroup);
+
+        // Raycaster
+        const raycaster = new THREE.Raycaster();
+        const cursorMesh = new THREE.Mesh(
+            new THREE.RingGeometry(0.1, 0.15, 32),
+            new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+        );
+        scene.add(cursorMesh);
+
+        // Particle System (Ash)
+        let particles = [];
+        const particleGeo = new THREE.BufferGeometry();
+        const particleCount = 4000;
+        const pPos = new Float32Array(particleCount * 3);
+        const pLife = new Float32Array(particleCount); // Life 0-1
+        const pVel = new Float32Array(particleCount * 3);
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        const particleMat = new THREE.PointsMaterial({
+            color: 0xccaa88,
+            size: 0.08,
+            transparent: true,
+            opacity: 1,
+            blending: THREE.AdditiveBlending
+        });
+
+        // Initialize particles off-screen
+        for(let i=0; i<particleCount*3; i++) pPos[i] = 9999;
+        const particleSystem = new THREE.Points(particleGeo, particleMat);
+        scene.add(particleSystem);
+
+        // --- Deck Visuals ---
+        function spawnDeck() {
+            // Create a stack visual
+            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.12);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x4b356f,
+                map: backTexture,
+                emissive: 0x5a3b10,
+                emissiveIntensity: 0.38,
+                roughness: 0.55
+            });
+
+            // Create a "Deck" object to pick from
+            const deckMesh = new THREE.Mesh(geometry, material);
+            deckMesh.position.set(0, -2, 0);
+            deckMesh.userData = { isDeck: true };
+            const outline = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.95 })
+            );
+            outline.raycast = () => {};
+            deckMesh.add(outline);
+            cardGroup.add(deckMesh);
+        }
+        spawnDeck();
+
+        // --- Ash Logic ---
+        function triggerAshEffect(mesh) {
+            // Sample positions from mesh
+            mesh.updateMatrixWorld();
+            const center = mesh.position.clone();
+            const width = CONFIG.cardWidth;
+            const height = CONFIG.cardHeight;
+
+            // Update particle arrays
+            const positions = particleSystem.geometry.attributes.position.array;
+            
+            for(let i=0; i < particleCount; i++) {
+                // Random point inside the card volume
+                const lx = (Math.random() - 0.5) * width;
+                const ly = (Math.random() - 0.5) * height;
+                const lz = (Math.random() - 0.5) * 0.1;
+
+                // Transform local to world (simplified rotation handling)
+                const p = new THREE.Vector3(lx, ly, lz).applyQuaternion(mesh.quaternion).add(center);
+
+                positions[i*3] = p.x;
+                positions[i*3+1] = p.y;
+                positions[i*3+2] = p.z;
+
+                pLife[i] = 1.0; // Full life
+                
+                // Random velocity (upward with spread)
+                pVel[i*3] = (Math.random() - 0.5) * 0.5; // X
+                pVel[i*3+1] = Math.random() * 1.5 + 0.5; // Y (Up)
+                pVel[i*3+2] = (Math.random() - 0.5) * 0.5; // Z
+            }
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+            
+            // Remove the mesh
+            scene.remove(mesh);
+        }
+
+        function updateParticles(dt) {
+            const positions = particleSystem.geometry.attributes.position.array;
+            let active = false;
+
+            for(let i=0; i < particleCount; i++) {
+                if (pLife[i] > 0) {
+                    active = true;
+                    pLife[i] -= dt / CONFIG.particleLife;
+
+                    // Turbulence / Noise approximation
+                    const time = Date.now() * 0.001;
+                    const noise = Math.sin(time * 5 + positions[i*3+1]) * 0.02;
+
+                    positions[i*3] += (pVel[i*3] + noise) * dt;
+                    positions[i*3+1] += pVel[i*3+1] * dt;
+                    positions[i*3+2] += pVel[i*3+2] * dt;
+                } else {
+                    positions[i*3] = 9999; // Hide
+                }
+            }
+            
+            if(active) {
+                particleSystem.geometry.attributes.position.needsUpdate = true;
+                // Fade effect via material opacity global hack (or per vertex color ideally)
+                // For simplicity, we just let them scatter.
+            }
+        }
+
+        // --- Interaction Logic ---
+
+        function drawRandomCard() {
+            if (STATE.deck.length === 0) return null;
+            const randomIndex = Math.floor(Math.random() * STATE.deck.length);
+            const cardId = STATE.deck.splice(randomIndex, 1)[0];
+            uiMotion.updateStatus(document.getElementById('deck-count'), String(STATE.deck.length));
+
+            const isReversed = Math.random() < 0.5;
+            const cardData = TAROT_DATA.find(c => c.id === cardId);
+
+            return { data: cardData, isReversed };
+        }
+
+        function createHeldCard() {
+            const draw = drawRandomCard();
+            if(!draw) return;
+
+            STATE.drawnCardData = draw;
+
+            // Geometry
+            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.02);
+            
+            // Materials (Back and Front)
+            // Note: BoxGeometry UV mapping for materials array: [Right, Left, Top, Bottom, Front, Back]
+            // We need to verify standard Box mapping. Usually 4 is Front, 5 is Back.
+            
+            // Load specific texture
+            const tex = textureLoader.load(draw.data.img, undefined, undefined, () => {
+                // Error fallback
+                materialArray[4].map = defaultFront;
+            });
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+            const matSide = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const matBack = new THREE.MeshStandardMaterial({ map: backTexture });
+            const matFront = new THREE.ShaderMaterial({
+                transparent: true,
+                toneMapped: false,
+                uniforms: {
+                    cardTexture: { value: tex },
+                    saturation: { value: 1.04 },
+                    contrast: { value: 1.06 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D cardTexture;
+                    uniform float saturation;
+                    uniform float contrast;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 sampled = texture2D(cardTexture, vUv);
+                        float luminance = dot(sampled.rgb, vec3(0.2126, 0.7152, 0.0722));
+                        vec3 saturated = mix(vec3(luminance), sampled.rgb, saturation);
+                        vec3 contrasted = (saturated - 0.5) * contrast + 0.5;
+                        vec3 softClipped = contrasted / (1.0 + max(contrasted - 0.92, 0.0) * 1.6);
+                        gl_FragColor = vec4(clamp(softClipped, 0.0, 1.0), sampled.a);
+                    }
+                `
+            });
+
+            const materialArray = [matSide, matSide, matSide, matSide, matFront, matBack];
+
+            const mesh = new THREE.Mesh(geometry, materialArray);
+            const cardOutline = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                new THREE.LineBasicMaterial({ color: 0xffdf82, transparent: true, opacity: 0.9 })
+            );
+            cardOutline.raycast = () => {};
+            mesh.add(cardOutline);
+            
+            // Initial position (at deck)
+            mesh.position.set(0, -2, 0);
+            
+            // Orientation
+            if (draw.isReversed) {
+               // Reversed: Rotate 180 on Z so image is upside down
+               mesh.rotation.z = Math.PI;
+            }
+
+            // Start invisible/small? No, just appear at hand
+            scene.add(mesh);
+            STATE.heldCard = mesh;
+            elementEffect.prepare(draw.data, draw.isReversed ? 'reversed' : 'upright', mesh.position);
+            return mesh;
+        }
+
+        function confirmResult() {
+            if (!STATE.heldCard || STATE.locked) return;
+            STATE.locked = true;
+            uiMotion.focusReading();
+
+            const data = STATE.drawnCardData.data;
+            const isRev = STATE.drawnCardData.isReversed;
+            
+            // 1. UI Show
+            const title = document.getElementById('result-title');
+            const meaning = document.getElementById('result-meaning');
+            const display = document.getElementById('result-display');
+            
+            let nameText = data.name;
+            if(isRev) nameText += " <span class='reversed-tag'>逆位 (Reversed)</span>";
+            
+            title.innerHTML = nameText;
+            meaning.innerText = isRev ? data.meaningRev : data.meaningUp;
+            lastReadingCard = { cardName: data.name, orientation: isRev ? 'reversed' : 'upright', standardMeaning: isRev ? data.meaningRev : data.meaningUp };
+            readingController.requestReading(lastReadingCard);
+            
+            display.style.opacity = 1;
+            uiMotion.revealResult();
+
+            // 2. History Log
+            const historyPanel = document.getElementById('history-panel');
+            const log = document.createElement('div');
+            log.className = 'history-item';
+            log.innerHTML = `<span class="history-name">${data.name} ${isRev ? '(逆)' : ''}</span>`;
+            historyPanel.prepend(log);
+            uiMotion.revealHistory(log);
+
+            // 3. Ash Effect
+            elementEffect.reveal();
+            setTimeout(() => elementEffect.settle(), 650);
+            triggerAshEffect(STATE.heldCard);
+            STATE.heldCard = null;
+
+            // 4. Reset after delay
+            setTimeout(() => {
+                display.style.opacity = 0;
+                elementEffect.dispose();
+                STATE.locked = false;
+                uiMotion.releaseReading();
+            }, 4000);
+        }
+
+        function updateInteraction(dt) {
+            if (STATE.locked) return;
+
+            // Raycasting
+            raycaster.setFromCamera(STATE.pointer, camera);
+            const intersects = raycaster.intersectObjects(cardGroup.children);
+            
+            // Visual Cursor
+            const vector = new THREE.Vector3(STATE.pointer.x, STATE.pointer.y, 0.5);
+            vector.unproject(camera);
+            const dir = vector.sub(camera.position).normalize();
+            const distance = (0 - camera.position.z) / dir.z; // Project to Z=0 plane
+            const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+            
+            // Smooth cursor movement
+            cursorMesh.position.lerp(pos, 0.2);
+            
+            // --- Logic ---
+            const gesture = STATE.gesture;
+            const isPinch = (gesture === 'PINCH' && STATE.mode === 'gesture') || (STATE.mode === 'mouse' && STATE.isInteracting);
+            const isFist = (gesture === 'FIST' && STATE.mode === 'gesture');
+
+            // Colorize cursor based on state
+            if (isPinch) cursorMesh.material.color.set(0xff00ff);
+            else if (isFist) cursorMesh.material.color.set(0xff0000);
+            else cursorMesh.material.color.set(0x00ffff);
+
+            // 1. Grabbing Card
+            if (isPinch && !STATE.heldCard) {
+                // If hitting deck
+                const hitDeck = intersects.find(hit => hit.object.userData.isDeck);
+                if (hitDeck) {
+                    createHeldCard();
+                }
+            }
+
+            // 2. Dragging Card
+            if (STATE.heldCard) {
+                // Target position: slightly in front of camera, following cursor
+                const targetPos = pos.clone();
+                targetPos.z = 8; // Bring close to camera
+                targetPos.y += 0.5; // Slightly above finger
+
+                STATE.heldCard.position.lerp(targetPos, CONFIG.dragSpeed);
+                
+                // Slight rotation following movement
+                STATE.heldCard.rotation.y = (STATE.pointer.x * 0.5);
+                if(STATE.drawnCardData.isReversed) {
+                     STATE.heldCard.rotation.z = Math.PI + (STATE.pointer.x * 0.1);
+                } else {
+                     STATE.heldCard.rotation.z = (STATE.pointer.x * 0.1);
+                }
+
+                // 3. Confirming
+                if (isFist || (STATE.mode === 'mouse' && !STATE.isInteracting && STATE.heldCard)) {
+                    // In mouse mode, releasing click drops/confirms
+                    confirmResult();
+                }
+            }
+        }
+
+        // --- MediaPipe Hands Setup ---
+        const videoElement = document.getElementById('input_video');
+        const statusText = document.getElementById('status-text');
+        const gestureIcon = document.getElementById('gesture-icon');
+
+        function onResults(results) {
+            if (STATE.mode !== 'gesture') return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                STATE.handVisible = true;
+                statusText.innerText = "已连接";
+                statusText.style.color = "#0f0";
+                
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Get Index Finger Tip (8) and Thumb Tip (4) coordinates
+                // MediaPipe coords: x (0-1), y (0-1). 
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                const middleTip = landmarks[12];
+                const ringTip = landmarks[16];
+                const pinkyTip = landmarks[20];
+                const wrist = landmarks[0];
+
+                // Calculate pointer position (Center of Index and Thumb)
+                const palmX = (indexTip.x + thumbTip.x) / 2;
+                const palmY = (indexTip.y + thumbTip.y) / 2;
+
+                // Map to Three.js NDC (-1 to 1)
+                // Note: Video is mirrored usually, so flip X
+                STATE.pointer.x = (1.0 - palmX) * 2 - 1; 
+                STATE.pointer.y = -(palmY * 2) + 1;
+
+                // --- Gesture Logic ---
+                
+                // 1. Distance for Pinch (Index to Thumb)
+                const dx = indexTip.x - thumbTip.x;
+                const dy = indexTip.y - thumbTip.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                // 2. Fist Detection (Fingers curled down)
+                // Simple check: Tip y > PIP y (y increases downwards)
+                const isFist = (
+                    middleTip.y > landmarks[10].y && 
+                    ringTip.y > landmarks[14].y && 
+                    pinkyTip.y > landmarks[18].y &&
+                    indexTip.y > landmarks[6].y
+                );
+
+                if (isFist) {
+                    STATE.gesture = 'FIST';
+                    gestureIcon.innerText = '✊';
+                } else if (dist < CONFIG.zIndexPinch) {
+                    STATE.gesture = 'PINCH';
+                    gestureIcon.innerText = '👌';
+                } else {
+                    STATE.gesture = 'OPEN';
+                    gestureIcon.innerText = '✋';
+                }
+
+            } else {
+                STATE.handVisible = false;
+                statusText.innerText = "未检测到手部";
+                statusText.style.color = "#ff0";
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults(onResults);
+
+        // Camera Utils
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                if(STATE.mode === 'gesture') await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        // Start Camera
+        cameraUtils.start().then(() => {
+            document.getElementById('loading').style.display = 'none';
+        }).catch(err => {
+            console.error(err);
+            document.getElementById('loading').innerText = "摄像头失败，切换至鼠标模式";
+            setTimeout(() => {
+                toggleMode(true);
+                document.getElementById('loading').style.display = 'none';
+            }, 2000);
+        });
+
+        // --- Mouse Fallback ---
+        function toggleMode(forceMouse = false) {
+            const btn = document.getElementById('btn-mode');
+            if (STATE.mode === 'gesture' || forceMouse) {
+                STATE.mode = 'mouse';
+                btn.innerText = "切换模式: 🖱️ 鼠标";
+                statusText.innerText = "鼠标模式";
+                videoElement.pause();
+                // Reset gesture state
+                STATE.gesture = 'OPEN'; 
+            } else {
+                STATE.mode = 'gesture';
+                btn.innerText = "切换模式: ✋ 手势";
+                videoElement.play();
+            }
+        }
+
+        document.getElementById('btn-mode').addEventListener('click', () => toggleMode());
+
+        window.addEventListener('mousemove', (e) => {
+            if (STATE.mode === 'mouse') {
+                STATE.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+                STATE.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            }
+        });
+
+        window.addEventListener('mousedown', () => {
+            if(STATE.mode === 'mouse') STATE.isInteracting = true;
+        });
+
+        window.addEventListener('mouseup', () => {
+            if(STATE.mode === 'mouse') STATE.isInteracting = false;
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- Animation Loop ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+
+            updateInteraction(dt);
+            updateParticles(dt);
+            elementEffect.update(dt);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+    </script>
+</body>
 </html>
