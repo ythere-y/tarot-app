@@ -11,7 +11,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint .",
-    "check": "npm run lint && npm run test:run && npm run build"
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run test:run && npm run typecheck && npm run build"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@types/node": "^26.1.2",
     "@types/three": "^0.181.0",
     "eslint": "^9.39.5",
     "jsdom": "^27.4.0",
