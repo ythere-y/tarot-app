@@ -15,7 +15,8 @@ test('app exposes five topics and AI reading contract', async () => {
     assert.match(html, /THE INTERACTIVE ARCANA/);
     assert.match(html, /class="oracle-console editorial-intro"/);
     assert.match(html, /@media \(prefers-reduced-motion: reduce\)/);
-    assert.match(html, /\/vendor\/anime\.esm\.js/);
+    assert.match(html, /https:\/\/cdn\.jsdelivr\.net\/npm\/animejs@4\.5\.0\/\+esm/);
+    assert.doesNotMatch(html, /from ['"]\/vendor\/anime\.esm\.js['"]/);
     assert.match(html, /createUiMotion/);
     assert.match(html, /animate as animeAnimate/);
     assert.doesNotMatch(html, /import \{ animate, createTimeline, stagger \}/);
