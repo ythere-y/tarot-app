@@ -4,3 +4,5 @@ dist/
 .superpowers/
 public/mediapipe/wasm/
 .env
+.superpowers
+.github
