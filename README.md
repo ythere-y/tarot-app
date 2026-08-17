@@ -1,5 +1,28 @@
 # 🔮 Ether Tarot
 
+## Windows 快捷启动
+
+在项目根目录运行：
+
+```powershell
+.\start-local.ps1
+```
+
+脚本会读取 `.env` 中的 `PORT`（未配置时使用 `8090`），自动强制关闭占用该端口的程序，然后在当前窗口执行 `npm start`。请确认该端口没有被重要服务使用。按 `Ctrl+C` 可以停止项目。
+
+`.env` 示例：
+
+```dotenv
+PORT=8090
+DEEPSEEK_API_KEY=你的密钥
+```
+
+如果 PowerShell 的执行策略阻止脚本运行，使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1
+```
+
 ## 受控 AI 星语（DeepSeek）
 
 项目支持在抽牌后，根据固定主题、牌面、正逆位和本地标准牌义生成简短中文解读。浏览器不接触 API Key，也不接受自由文本问题；生成内容仅供娱乐与自我反思。
