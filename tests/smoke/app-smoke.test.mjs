@@ -11,6 +11,14 @@ test('app exposes five topics and AI reading contract', async () => {
     const html = await (await fetch(base)).text();
     for (const label of ['综合', '感情', '事业', '财运', '成长']) assert.match(html, new RegExp(label));
     for (const id of ['ai-headline', 'ai-text', 'ai-action', 'ai-disclaimer']) assert.match(html, new RegExp(`id="${id}"`));
+    assert.match(html, /class="oracle-header editorial-intro"/);
+    assert.match(html, /THE INTERACTIVE ARCANA/);
+    assert.match(html, /class="oracle-console editorial-intro"/);
+    assert.match(html, /@media \(prefers-reduced-motion: reduce\)/);
+    assert.match(html, /\/vendor\/anime\.esm\.js/);
+    assert.match(html, /createUiMotion/);
+    assert.match(html, /animate as animeAnimate/);
+    assert.doesNotMatch(html, /import \{ animate, createTimeline, stagger \}/);
     assert.match(html, /const matFront = new THREE\.ShaderMaterial/);
     assert.match(html, /tex\.anisotropy = renderer\.capabilities\.getMaxAnisotropy\(\)/);
     assert.match(html, /new THREE\.LineBasicMaterial\(\{ color: 0xffdf82/);

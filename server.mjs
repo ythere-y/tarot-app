@@ -6,6 +6,7 @@ import { createReadingService, ReadingServiceError } from './src/server/reading-
 import { createRateLimiter } from './src/server/rate-limit.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
+const animeModule = resolve(root, 'node_modules/animejs/dist/bundles/anime.esm.js');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml' };
 
 function headers(res) {
@@ -56,6 +57,13 @@ export function createAppServer({ readingService, rateLimit } = {}) {
     if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '不支持该方法' } });
     let pathname;
     try { pathname = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end(); }
+    if (pathname === '/vendor/anime.esm.js') {
+      if (!existsSync(animeModule) || !statSync(animeModule).isFile()) { res.writeHead(404); return res.end('Not Found'); }
+      res.writeHead(200, { 'Content-Type': mime['.js'] });
+      if (req.method === 'HEAD') return res.end();
+      return createReadStream(animeModule).pipe(res);
+    }
+    if (pathname.startsWith('/vendor/')) { res.writeHead(404); return res.end('Not Found'); }
     if (pathname === '/') pathname = '/index.html';
     const file = resolve(root, `.${pathname}`);
     const rootPrefix = root.endsWith(sep) ? root : root + sep;

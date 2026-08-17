@@ -5,6 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ether Tarot - Three.js & MediaPipe</title>
     <style>
+        :root { --ink:#070711; --paper:#f5f0ff; --muted:#9890aa; --violet:#9b7cff; --mint:#54e8c4; --rose:#ff5ebc; --line:rgba(190,174,235,.24); }
+        * { box-sizing:border-box; }
+        body { margin:0; overflow:hidden; background:radial-gradient(circle at 50% 44%,#171128 0,#080711 48%,#040408 100%); font-family:Inter,ui-sans-serif,system-ui,sans-serif; color:var(--paper); }
+        body::before { content:""; position:fixed; inset:0; pointer-events:none; background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:40px 40px; mask-image:linear-gradient(to bottom,black,transparent 85%); }
+        #canvas-container { position:absolute; inset:0; z-index:1; background:#070711; }
+        #canvas-container::after { content:""; position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 45%,rgba(23,16,43,.12),rgba(5,5,12,.44) 72%); mix-blend-mode:multiply; }
+        #ui-layer { --ui-focus:1; position:absolute; inset:0; z-index:2; pointer-events:none; padding:clamp(18px,3vw,42px); display:grid; grid-template-columns:minmax(250px,330px) 1fr minmax(220px,290px); grid-template-rows:auto 1fr auto; gap:22px; }
+        .oracle-header { grid-column:1; grid-row:1; align-self:start; opacity:var(--ui-focus); }
+        .eyebrow { color:var(--mint); font-size:10px; letter-spacing:.34em; text-transform:uppercase; }
+        .oracle-header h1 { font-family:Georgia,'Times New Roman',serif; font-weight:400; font-size:clamp(36px,4.7vw,72px); line-height:.88; letter-spacing:-.05em; margin:14px 0 12px; }
+        .oracle-header p { color:var(--muted); font-size:12px; line-height:1.6; max-width:260px; margin:0; }
+        .oracle-console,.status-panel,#history-panel { pointer-events:auto; background:linear-gradient(145deg,rgba(16,13,29,.86),rgba(7,7,15,.62)); border:1px solid var(--line); backdrop-filter:blur(16px); box-shadow:0 18px 60px rgba(0,0,0,.28); }
+        .oracle-console { grid-column:1; grid-row:2; align-self:end; padding:16px; opacity:var(--ui-focus); }
+        .console-label { color:var(--muted); font-size:9px; letter-spacing:.24em; margin-bottom:10px; text-transform:uppercase; }
+        button { position:relative; overflow:hidden; background:rgba(255,255,255,.035); color:var(--paper); border:1px solid var(--line); padding:9px 11px; cursor:pointer; transition:transform .18s ease,border-color .18s,color .18s,background .18s; width:100%; font:600 10px/1.2 inherit; letter-spacing:.08em; text-transform:uppercase; }
+        button:hover { transform:translateY(-2px); border-color:var(--mint); color:var(--mint); background:rgba(84,232,196,.08); }
+        #topic-picker { margin-top:8px; display:grid; grid-template-columns:repeat(5,1fr); gap:4px; }
+        #topic-picker button { padding:7px 2px; font-size:9px; }
+        #topic-picker button[aria-pressed="true"] { color:#080711; border-color:var(--mint); background:var(--mint); }
+        .gesture-guide { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:14px; color:var(--muted); font-size:9px; line-height:1.35; }
+        .gesture-guide span { border-top:1px solid var(--line); padding-top:7px; }
+        .status-panel { grid-column:3; grid-row:1; padding:14px 16px; opacity:var(--ui-focus); }
+        .status-row { display:flex; justify-content:space-between; align-items:center; gap:12px; color:var(--muted); font-size:9px; letter-spacing:.18em; text-transform:uppercase; }
+        .status-row + .status-row { border-top:1px solid var(--line); margin-top:10px; padding-top:10px; }
+        #status-text,#deck-count { color:var(--paper); font-size:12px; letter-spacing:.04em; text-transform:none; }
+        #gesture-icon { color:var(--mint); font-size:18px; min-width:24px; text-align:center; }
+        #result-display { position:absolute; top:50%; left:50%; width:min(680px,calc(100vw - 40px)); transform:translate(-50%,-50%); text-align:center; opacity:0; pointer-events:none; padding:30px; background:radial-gradient(ellipse,rgba(12,8,23,.94),rgba(8,6,16,.74) 58%,transparent 75%); }
+        #result-title { font-family:Georgia,'Times New Roman',serif; font-size:clamp(42px,6vw,78px); font-weight:400; line-height:.95; margin:0; text-shadow:0 0 35px rgba(155,124,255,.35); }
+        #result-meaning { color:#c8c0d5; margin:14px auto 0; max-width:570px; font:14px/1.7 Georgia,serif; }
+        #ai-reading { max-width:590px; margin:18px auto 0; padding:15px 18px; border-top:1px solid rgba(84,232,196,.45); background:rgba(8,7,17,.72); pointer-events:auto; }
+        #ai-reading[data-state="loading"]::before { content:""; display:block; height:1px; margin:-16px -18px 14px; background:linear-gradient(90deg,transparent,var(--mint),transparent); animation:oracle-scan 1.5s ease-in-out infinite; }
+        #ai-headline { margin:0 0 7px; color:var(--mint); font:600 10px/1.2 inherit; letter-spacing:.18em; text-transform:uppercase; }
+        #ai-text,#ai-action { margin:6px 0; font-size:12px; line-height:1.6; }
+        #ai-action { color:#bdebdc; } #ai-disclaimer { color:#777083; font-size:9px; } #ai-retry { width:auto; margin-top:8px; }
+        .reversed-tag { color:var(--rose); font:600 10px/1 inherit; border:1px solid var(--rose); padding:4px 7px; vertical-align:middle; margin-left:10px; letter-spacing:.08em; }
+        #history-panel { grid-column:3; grid-row:2 / 4; align-self:end; max-height:210px; overflow-y:auto; padding:14px 16px; opacity:var(--ui-focus); scrollbar-width:thin; scrollbar-color:var(--violet) transparent; }
+        .history-kicker { color:var(--violet); font-size:9px; letter-spacing:.2em; padding-bottom:10px; border-bottom:1px solid var(--line); }
+        .history-item { border-bottom:1px solid var(--line); padding:10px 0; display:flex; justify-content:space-between; font-size:11px; }
+        .history-name { color:#d9d1e7; }
+        .stage-orbit { position:absolute; z-index:1; left:50%; top:50%; width:min(48vw,620px); aspect-ratio:1; transform:translate(-50%,-50%); border:1px solid rgba(155,124,255,.14); border-radius:50%; pointer-events:none; }
+        .stage-orbit::before { content:""; position:absolute; inset:14%; border:1px dashed rgba(84,232,196,.12); border-radius:50%; }
+        #input_video { position:absolute; width:1px; height:1px; opacity:0; }
+        #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10; color:var(--mint); background:rgba(5,5,12,.92); border:1px solid var(--line); padding:18px 24px; font-size:11px; letter-spacing:.16em; text-transform:uppercase; }
+        @keyframes oracle-scan { 0%,100%{transform:scaleX(.2);opacity:.35} 50%{transform:scaleX(1);opacity:1} }
+        @media (max-width: 800px) { body{overflow:auto} #ui-layer{padding:16px;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto auto} .oracle-header{grid-column:1}.oracle-header h1{font-size:36px}.status-panel{grid-column:2}.oracle-console{grid-column:1 / 3;grid-row:3}.gesture-guide{display:none} #history-panel{grid-column:1 / 3;grid-row:4;position:relative;max-height:120px}.stage-orbit{width:78vw} #result-display{top:44%;padding:20px} }
+        @media (max-width: 520px) { #ui-layer{display:flex;flex-direction:column}.oracle-header p{display:none}.oracle-header h1{font-size:30px}.status-panel{position:absolute;right:16px;top:16px;width:44%}.oracle-console{margin-top:auto;align-self:stretch;width:100%} #topic-picker{grid-template-columns:repeat(5,1fr)} #history-panel{align-self:stretch;width:100%;max-height:88px} #result-title{font-size:38px} #ai-reading{padding:12px} }
+        @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; transition-duration:.01ms!important; } }
+    </style>
+    <style id="legacy-styles" media="not all">
         body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', Courier, monospace; color: #ddd; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         
@@ -74,26 +123,28 @@
     <div id="loading">初始化神谕系统 (加载模型中)...</div>
 
     <div id="canvas-container"></div>
+    <div class="stage-orbit" aria-hidden="true"></div>
 
     <div id="ui-layer">
-        <div class="top-bar">
-            <div class="controls">
-                <h3>🔮 Ether Tarot</h3>
+        <header class="oracle-header editorial-intro">
+            <div class="eyebrow">ARCANA / SESSION 01</div>
+            <h1>Ether<br>Tarot</h1>
+            <p>THE INTERACTIVE ARCANA<br>让牌面在你的手势与直觉之间显现。</p>
+        </header>
+            <section class="oracle-console editorial-intro" aria-label="神谕控制台">
+                <div class="console-label">Oracle console · 神谕控制台</div>
                 <button id="btn-mode">切换模式: ✋ 手势</button>
                 <div id="topic-picker" aria-label="选择 AI 解读主题">
                     <button type="button" data-topic="general" aria-pressed="true">综合</button><button type="button" data-topic="love" aria-pressed="false">感情</button><button type="button" data-topic="career" aria-pressed="false">事业</button><button type="button" data-topic="wealth" aria-pressed="false">财运</button><button type="button" data-topic="growth" aria-pressed="false">成长</button>
                 </div>
-                <div style="font-size: 0.8em; margin-top: 5px; color: #aaa;">
-                    ✋ 张开: 悬停<br>
-                    👌 捏合: 抓牌<br>
-                    ✊ 握拳: 确认/化灰
+                <div class="gesture-guide">
+                    <span>01 张开<br>悬停</span><span>02 捏合<br>抓牌</span><span>03 握拳<br>揭示</span>
                 </div>
-            </div>
-            <div class="status-panel">
-                <div>状态: <span id="status-text" style="color:cyan">等待连接...</span> <span id="gesture-icon">-</span></div>
-                <div style="font-size:0.8em; color:#888;">剩余卡牌: <span id="deck-count">78</span></div>
-            </div>
-        </div>
+            </section>
+            <aside class="status-panel editorial-intro" aria-label="当前状态">
+                <div class="status-row"><span>Connection</span><span><span id="status-text">等待连接...</span> <span id="gesture-icon">—</span></span></div>
+                <div class="status-row"><span>Remaining</span><span id="deck-count">78</span></div>
+            </aside>
 
         <div id="result-display">
             <h1 id="result-title">THE FOOL</h1>
@@ -105,9 +156,7 @@
             </section>
         </div>
 
-        <div id="history-panel">
-            <div style="color: #666; font-style: italic;">抽卡记录...</div>
-        </div>
+        <aside id="history-panel" class="editorial-intro" aria-label="抽牌记录"><div class="history-kicker">ARCHIVE · 抽牌记录</div></aside>
     </div>
 
     <script type="module">
@@ -115,13 +164,19 @@
         import { createReadingController } from './src/client/reading.js';
         import { createMinorEffectController } from './src/client/effects/minor-effect-controller.js';
         import { createThreeElementRenderer } from './src/client/effects/three-element-renderer.js';
+        import { animate as animeAnimate, createTimeline, stagger } from '/vendor/anime.esm.js';
+        import { createUiMotion } from './src/client/ui-motion.js';
+
+        const uiMotion = createUiMotion({ anime: { animate: animeAnimate, createTimeline, stagger } });
+        uiMotion.intro();
+        window.addEventListener('pagehide', () => uiMotion.destroy(), { once: true });
 
         const aiElements = { headline: document.getElementById('ai-headline'), text: document.getElementById('ai-text'), action: document.getElementById('ai-action'), disclaimer: document.getElementById('ai-disclaimer'), retry: document.getElementById('ai-retry') };
         let lastReadingCard = null;
         const readingController = createReadingController({ view: {
-            showLoading() { aiElements.headline.textContent = '星语生成中…'; aiElements.text.textContent = '正在结合牌面与所选主题生成受控解读。'; aiElements.action.hidden = true; aiElements.retry.hidden = true; },
-            showSuccess(value) { aiElements.headline.textContent = value.headline; aiElements.text.textContent = value.reading; aiElements.action.textContent = `行动提示：${value.action}`; aiElements.action.hidden = false; aiElements.disclaimer.textContent = `AI 生成 · ${value.disclaimer}`; aiElements.retry.hidden = true; },
-            showError(message) { aiElements.headline.textContent = 'AI 解读暂不可用'; aiElements.text.textContent = `${message} 固定牌义仍可正常参考。`; aiElements.action.hidden = true; aiElements.retry.hidden = false; }
+            showLoading() { aiElements.headline.textContent = '星语生成中…'; aiElements.text.textContent = '正在结合牌面与所选主题生成受控解读。'; aiElements.action.hidden = true; aiElements.retry.hidden = true; uiMotion.setAiState('loading'); },
+            showSuccess(value) { aiElements.headline.textContent = value.headline; aiElements.text.textContent = value.reading; aiElements.action.textContent = `行动提示：${value.action}`; aiElements.action.hidden = false; aiElements.disclaimer.textContent = `AI 生成 · ${value.disclaimer}`; aiElements.retry.hidden = true; uiMotion.setAiState('success'); },
+            showError(message) { aiElements.headline.textContent = 'AI 解读暂不可用'; aiElements.text.textContent = `${message} 固定牌义仍可正常参考。`; aiElements.action.hidden = true; aiElements.retry.hidden = false; uiMotion.setAiState('error'); }
         }});
         document.querySelectorAll('#topic-picker button').forEach(button => button.addEventListener('click', () => {
             readingController.setTopic(button.dataset.topic);
@@ -216,6 +271,7 @@
         camera.lookAt(0,0,0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setClearColor(0x070711, 1);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
@@ -362,7 +418,7 @@
             if (STATE.deck.length === 0) return null;
             const randomIndex = Math.floor(Math.random() * STATE.deck.length);
             const cardId = STATE.deck.splice(randomIndex, 1)[0];
-            document.getElementById('deck-count').innerText = STATE.deck.length;
+            uiMotion.updateStatus(document.getElementById('deck-count'), String(STATE.deck.length));
 
             const isReversed = Math.random() < 0.5;
             const cardData = TAROT_DATA.find(c => c.id === cardId);
@@ -453,6 +509,7 @@
         function confirmResult() {
             if (!STATE.heldCard || STATE.locked) return;
             STATE.locked = true;
+            uiMotion.focusReading();
 
             const data = STATE.drawnCardData.data;
             const isRev = STATE.drawnCardData.isReversed;
@@ -471,6 +528,7 @@
             readingController.requestReading(lastReadingCard);
             
             display.style.opacity = 1;
+            uiMotion.revealResult();
 
             // 2. History Log
             const historyPanel = document.getElementById('history-panel');
@@ -478,6 +536,7 @@
             log.className = 'history-item';
             log.innerHTML = `<span class="history-name">${data.name} ${isRev ? '(逆)' : ''}</span>`;
             historyPanel.prepend(log);
+            uiMotion.revealHistory(log);
 
             // 3. Ash Effect
             elementEffect.reveal();
@@ -490,6 +549,7 @@
                 display.style.opacity = 0;
                 elementEffect.dispose();
                 STATE.locked = false;
+                uiMotion.releaseReading();
             }, 4000);
         }
 

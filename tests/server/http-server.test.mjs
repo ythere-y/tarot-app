@@ -23,6 +23,17 @@ test('serves the app with security headers', async () => withServer({}, async (b
   assert.match(csp, /worker-src[^;]*blob:/);
 }));
 
+test('serves only the allow-listed local Anime.js module', async () => withServer({}, async (base) => {
+  const allowed = await fetch(`${base}/vendor/anime.esm.js`);
+  assert.equal(allowed.status, 200);
+  assert.match(allowed.headers.get('content-type'), /javascript/);
+  const source = await allowed.text();
+  assert.match(source, /animate/);
+  assert.doesNotMatch(source, /from ['"]\.\//);
+
+  assert.equal((await fetch(`${base}/vendor/package.json`)).status, 404);
+}));
+
 test('returns a generated reading and rejects invalid API requests', async () => withServer({
   readingService: { generate: async () => reading },
 }, async (base) => {
