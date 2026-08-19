@@ -11,6 +11,20 @@ test('app exposes five topics and AI reading contract', async () => {
     const html = await (await fetch(base)).text();
     for (const label of ['综合', '感情', '事业', '财运', '成长']) assert.match(html, new RegExp(label));
     for (const id of ['ai-headline', 'ai-text', 'ai-action', 'ai-disclaimer']) assert.match(html, new RegExp(`id="${id}"`));
+    for (const id of ['onboarding-dialog', 'onboarding-guide', 'onboarding-help', 'onboarding-camera-error']) assert.match(html, new RegExp(`id="${id}"`));
+    assert.match(html, /role="dialog"/);
+    assert.match(html, /aria-live="polite"/);
+    assert.match(html, /摄像头画面仅在浏览器本地用于手势识别/);
+    assert.match(html, /改用鼠标/);
+    assert.match(html, /跳过引导/);
+    assert.match(html, /createOnboardingController/);
+    assert.match(html, /startGestureCamera/);
+    for (const id of ['shuffle-status', 'shuffle-action', 'shuffle-skip']) assert.match(html, new RegExp(`id="${id}"`));
+    assert.match(html, /createShuffleSequence/);
+    assert.match(html, /shuffleSequence\.update\(dt\)/);
+    assert.match(html, /开始洗牌/);
+    assert.match(html, /跳过动画/);
+    assert.match(html, /createDeckBackTexture/);
     assert.match(html, /class="oracle-header editorial-intro"/);
     assert.match(html, /THE INTERACTIVE ARCANA/);
     assert.match(html, /class="oracle-console editorial-intro"/);
@@ -25,9 +39,9 @@ test('app exposes five topics and AI reading contract', async () => {
     assert.match(html, /saturation:\s*\{ value: 1\.04 \}/);
     assert.match(html, /contrast:\s*\{ value: 1\.06 \}/);
     assert.match(html, /vec3 softClipped = contrasted \/ \(1\.0 \+ max\(contrasted - 0\.92, 0\.0\) \* 1\.6\)/);
-    assert.match(html, /color:\s*0x4b356f/);
-    assert.match(html, /emissive:\s*0x5a3b10/);
-    assert.match(html, /cardHeight,\s*0\.12/);
+    assert.match(html, /color:\s*0xffffff/);
+    assert.match(html, /emissive:\s*0x5a441c/);
+    assert.match(html, /cardHeight,\s*0\.025/);
     assert.match(html, /new THREE\.EdgesGeometry\(geometry\)/);
     assert.match(html, /createMinorEffectController/);
     assert.match(html, /createThreeElementRenderer/);
@@ -38,5 +52,45 @@ test('app exposes five topics and AI reading contract', async () => {
     assert.match(html, /suit,/);
     const response = await fetch(`${base}/api/reading`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ topic: 'general', cardName: 'The Fool', orientation: 'upright', standardMeaning: '新的开始。' }) });
     assert.deepEqual(await response.json(), expected);
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+test('drawn card title uses the legacy bold Courier face', async () => {
+  const server = createAppServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const html = await (await fetch(base)).text();
+    assert.match(html, /#result-title\s*\{[^}]*font-family:'Courier New',Courier,monospace;[^}]*font-weight:bold;/);
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+test('serves card artwork and exposes the requested corner layout', async () => {
+  const server = createAppServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const html = await (await fetch(base)).text();
+    const artwork = await fetch(`${base}/tarot_img/00.jpg`);
+    assert.equal(artwork.status, 200);
+    assert.match(artwork.headers.get('content-type') ?? '', /^image\/jpeg/);
+    assert.match(html, /img: `\/tarot_img\/\$\{/);
+    assert.match(html, /<h1>ETHER TAROT<\/h1>/);
+    assert.match(html, /\.oracle-header h1\s*\{[^}]*white-space:nowrap/);
+    assert.match(html, /#history-panel\s*\{[^}]*position:fixed;[^}]*left:/);
+    assert.match(html, /\.oracle-console\s*\{[^}]*position:fixed;[^}]*right:/);
+    assert.match(html, /#onboarding-guide\s*\{[^}]*position:fixed;[^}]*right:/);
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+test('does not expose completed-draw or AI retry buttons', async () => {
+  const server = createAppServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const html = await (await fetch(base)).text();
+    assert.doesNotMatch(html, /id="ai-retry"/);
+    assert.doesNotMatch(html, /重试 AI 解读/);
+    assert.doesNotMatch(html, /本轮已抽牌/);
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
