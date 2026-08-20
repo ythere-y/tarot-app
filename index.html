@@ -5,19 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ether Tarot - Three.js & MediaPipe</title>
     <style>
-        :root { --ink:#070711; --paper:#f5f0ff; --muted:#9890aa; --violet:#9b7cff; --mint:#54e8c4; --rose:#ff5ebc; --line:rgba(190,174,235,.24); }
+        :root { --ink:#070705; --paper:#f2eee4; --muted:#9d978c; --violet:#b99b58; --mint:#d8b96f; --rose:#d48772; --line:rgba(216,185,111,.24); }
         * { box-sizing:border-box; }
-        body { margin:0; overflow:hidden; background:radial-gradient(circle at 50% 44%,#171128 0,#080711 48%,#040408 100%); font-family:Inter,ui-sans-serif,system-ui,sans-serif; color:var(--paper); }
+        [hidden] { display:none!important; }
+        body { margin:0; overflow:hidden; background:radial-gradient(circle at 50% 44%,#17140d 0,#080806 48%,#030303 100%); font-family:Inter,ui-sans-serif,system-ui,sans-serif; color:var(--paper); }
         body::before { content:""; position:fixed; inset:0; pointer-events:none; background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:40px 40px; mask-image:linear-gradient(to bottom,black,transparent 85%); }
-        #canvas-container { position:absolute; inset:0; z-index:1; background:#070711; }
-        #canvas-container::after { content:""; position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 45%,rgba(23,16,43,.12),rgba(5,5,12,.44) 72%); mix-blend-mode:multiply; }
+        #canvas-container { position:absolute; inset:0; z-index:1; background:#030303; }
+        #canvas-container::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.52; background-image:radial-gradient(circle at 18% 21%,rgba(242,238,228,.7) 0 1px,transparent 1.6px),radial-gradient(circle at 72% 34%,rgba(216,185,111,.52) 0 1px,transparent 1.7px),radial-gradient(circle at 44% 77%,rgba(242,238,228,.48) 0 1.2px,transparent 1.8px),radial-gradient(circle at 50% 45%,transparent 0,rgba(3,3,3,.55) 72%); background-size:137px 137px,193px 193px,239px 239px,100% 100%; }
         #ui-layer { --ui-focus:1; position:absolute; inset:0; z-index:2; pointer-events:none; padding:clamp(18px,3vw,42px); display:grid; grid-template-columns:minmax(250px,330px) 1fr minmax(220px,290px); grid-template-rows:auto 1fr auto; gap:22px; }
         .oracle-header { grid-column:1; grid-row:1; align-self:start; opacity:var(--ui-focus); }
         .eyebrow { color:var(--mint); font-size:10px; letter-spacing:.34em; text-transform:uppercase; }
-        .oracle-header h1 { font-family:Georgia,'Times New Roman',serif; font-weight:400; font-size:clamp(36px,4.7vw,72px); line-height:.88; letter-spacing:-.05em; margin:14px 0 12px; }
+        .oracle-header h1 { font-family:Georgia,'Times New Roman',serif; font-weight:400; font-size:clamp(32px,4vw,58px); line-height:.92; letter-spacing:-.05em; margin:14px 0 12px; white-space:nowrap; }
         .oracle-header p { color:var(--muted); font-size:12px; line-height:1.6; max-width:260px; margin:0; }
         .oracle-console,.status-panel,#history-panel { pointer-events:auto; background:linear-gradient(145deg,rgba(16,13,29,.86),rgba(7,7,15,.62)); border:1px solid var(--line); backdrop-filter:blur(16px); box-shadow:0 18px 60px rgba(0,0,0,.28); }
-        .oracle-console { grid-column:1; grid-row:2; align-self:end; padding:16px; opacity:var(--ui-focus); }
+        .oracle-console { position:fixed; right:clamp(18px,3vw,42px); bottom:clamp(18px,3vw,42px); width:min(290px,calc(100vw - 36px)); padding:16px; opacity:var(--ui-focus); }
         .console-label { color:var(--muted); font-size:9px; letter-spacing:.24em; margin-bottom:10px; text-transform:uppercase; }
         button { position:relative; overflow:hidden; background:rgba(255,255,255,.035); color:var(--paper); border:1px solid var(--line); padding:9px 11px; cursor:pointer; transition:transform .18s ease,border-color .18s,color .18s,background .18s; width:100%; font:600 10px/1.2 inherit; letter-spacing:.08em; text-transform:uppercase; }
         button:hover { transform:translateY(-2px); border-color:var(--mint); color:var(--mint); background:rgba(84,232,196,.08); }
@@ -26,31 +27,61 @@
         #topic-picker button[aria-pressed="true"] { color:#080711; border-color:var(--mint); background:var(--mint); }
         .gesture-guide { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:14px; color:var(--muted); font-size:9px; line-height:1.35; }
         .gesture-guide span { border-top:1px solid var(--line); padding-top:7px; }
-        .status-panel { grid-column:3; grid-row:1; padding:14px 16px; opacity:var(--ui-focus); }
+        .status-panel { position:fixed; right:clamp(18px,3vw,42px); top:clamp(190px,25vh,240px); width:min(290px,calc(100vw - 36px)); padding:14px 16px; opacity:var(--ui-focus); }
         .status-row { display:flex; justify-content:space-between; align-items:center; gap:12px; color:var(--muted); font-size:9px; letter-spacing:.18em; text-transform:uppercase; }
         .status-row + .status-row { border-top:1px solid var(--line); margin-top:10px; padding-top:10px; }
         #status-text,#deck-count { color:var(--paper); font-size:12px; letter-spacing:.04em; text-transform:none; }
         #gesture-icon { color:var(--mint); font-size:18px; min-width:24px; text-align:center; }
         #result-display { position:absolute; top:50%; left:50%; width:min(680px,calc(100vw - 40px)); transform:translate(-50%,-50%); text-align:center; opacity:0; pointer-events:none; padding:30px; background:radial-gradient(ellipse,rgba(12,8,23,.94),rgba(8,6,16,.74) 58%,transparent 75%); }
-        #result-title { font-family:Georgia,'Times New Roman',serif; font-size:clamp(42px,6vw,78px); font-weight:400; line-height:.95; margin:0; text-shadow:0 0 35px rgba(155,124,255,.35); }
+        #result-title { font-family:'Courier New',Courier,monospace; font-size:clamp(42px,6vw,78px); font-weight:bold; line-height:.95; margin:0; text-shadow:0 0 35px rgba(155,124,255,.35); }
+        #orientation-marker { margin:10px auto 0; color:var(--rose); font-family:Inter,ui-sans-serif,system-ui,sans-serif; font-size:10px; font-weight:600; line-height:1.2; letter-spacing:.18em; text-shadow:0 0 12px rgba(255,94,188,.35); animation:orientation-reveal 220ms ease-out both; }
         #result-meaning { color:#c8c0d5; margin:14px auto 0; max-width:570px; font:14px/1.7 Georgia,serif; }
         #ai-reading { max-width:590px; margin:18px auto 0; padding:15px 18px; border-top:1px solid rgba(84,232,196,.45); background:rgba(8,7,17,.72); pointer-events:auto; }
         #ai-reading[data-state="loading"]::before { content:""; display:block; height:1px; margin:-16px -18px 14px; background:linear-gradient(90deg,transparent,var(--mint),transparent); animation:oracle-scan 1.5s ease-in-out infinite; }
         #ai-headline { margin:0 0 7px; color:var(--mint); font:600 10px/1.2 inherit; letter-spacing:.18em; text-transform:uppercase; }
         #ai-text,#ai-action { margin:6px 0; font-size:12px; line-height:1.6; }
-        #ai-action { color:#bdebdc; } #ai-disclaimer { color:#777083; font-size:9px; } #ai-retry { width:auto; margin-top:8px; }
-        .reversed-tag { color:var(--rose); font:600 10px/1 inherit; border:1px solid var(--rose); padding:4px 7px; vertical-align:middle; margin-left:10px; letter-spacing:.08em; }
-        #history-panel { grid-column:3; grid-row:2 / 4; align-self:end; max-height:210px; overflow-y:auto; padding:14px 16px; opacity:var(--ui-focus); scrollbar-width:thin; scrollbar-color:var(--violet) transparent; }
+        #ai-action { color:#bdebdc; } #ai-disclaimer { color:#777083; font-size:9px; }
+        #history-panel { position:fixed; left:clamp(18px,3vw,42px); bottom:clamp(18px,3vw,42px); width:min(290px,calc(100vw - 36px)); max-height:210px; overflow-y:auto; padding:14px 16px; opacity:var(--ui-focus); scrollbar-width:thin; scrollbar-color:var(--violet) transparent; }
         .history-kicker { color:var(--violet); font-size:9px; letter-spacing:.2em; padding-bottom:10px; border-bottom:1px solid var(--line); }
         .history-item { border-bottom:1px solid var(--line); padding:10px 0; display:flex; justify-content:space-between; font-size:11px; }
         .history-name { color:#d9d1e7; }
         .stage-orbit { position:absolute; z-index:1; left:50%; top:50%; width:min(48vw,620px); aspect-ratio:1; transform:translate(-50%,-50%); border:1px solid rgba(155,124,255,.14); border-radius:50%; pointer-events:none; }
         .stage-orbit::before { content:""; position:absolute; inset:14%; border:1px dashed rgba(84,232,196,.12); border-radius:50%; }
+        #shuffle-stage { position:absolute; z-index:4; left:50%; top:50%; width:min(440px,calc(100vw - 40px)); transform:translate(-50%,-50%); pointer-events:none; text-align:center; }
+        #shuffle-status { position:absolute; left:50%; bottom:clamp(150px,20vh,210px); width:100%; transform:translateX(-50%); color:var(--mint); font-size:9px; letter-spacing:.3em; line-height:1.7; text-transform:uppercase; text-shadow:0 0 22px rgba(216,185,111,.36); }
+        .shuffle-actions { position:absolute; left:50%; top:clamp(145px,19vh,205px); width:min(230px,70vw); transform:translateX(-50%); display:grid; gap:7px; pointer-events:auto; }
+        #shuffle-action { color:#17130b; border-color:#eee7d7; background:#eee7d7; padding:12px 16px; }
+        #shuffle-action:hover { color:#090806; border-color:var(--mint); background:var(--mint); }
+        #shuffle-action:disabled { cursor:not-allowed; opacity:.38; transform:none; }
+        #shuffle-skip { color:var(--muted); border-color:transparent; background:transparent; }
         #input_video { position:absolute; width:1px; height:1px; opacity:0; }
         #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10; color:var(--mint); background:rgba(5,5,12,.92); border:1px solid var(--line); padding:18px 24px; font-size:11px; letter-spacing:.16em; text-transform:uppercase; }
+        .onboarding-backdrop { position:fixed; inset:0; z-index:30; display:grid; place-items:center; padding:20px; background:rgba(3,3,9,.82); backdrop-filter:blur(12px); }
+        .onboarding-card { width:min(560px,calc(100vw - 40px)); padding:clamp(24px,5vw,42px); border:1px solid var(--line); background:linear-gradient(145deg,rgba(22,17,39,.98),rgba(7,7,15,.98)); box-shadow:0 28px 100px rgba(0,0,0,.55); }
+        .onboarding-kicker { margin:0 0 12px; color:var(--mint); font-size:9px; letter-spacing:.3em; text-transform:uppercase; }
+        .onboarding-card h2 { margin:0; font:400 clamp(30px,5vw,48px)/1 Georgia,serif; }
+        .onboarding-copy { margin:14px 0 22px; color:#b7afc5; font-size:13px; line-height:1.7; }
+        .onboarding-options { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .onboarding-option { min-height:82px; text-align:left; padding:14px; }
+        .onboarding-option strong,.onboarding-option small { display:block; }
+        .onboarding-option small { margin-top:7px; color:var(--muted); font-weight:400; line-height:1.5; letter-spacing:0; text-transform:none; }
+        .onboarding-topics { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:16px; }
+        .onboarding-topics button[aria-pressed="true"] { color:var(--ink); border-color:var(--mint); background:var(--mint); }
+        .onboarding-actions { display:flex; gap:8px; margin-top:16px; }
+        .onboarding-actions .secondary { color:var(--muted); }
+        #onboarding-guide { position:fixed; z-index:24; right:clamp(18px,3vw,42px); top:clamp(18px,3vw,42px); width:min(350px,calc(100vw - 36px)); pointer-events:auto; padding:14px 16px; border:1px solid rgba(84,232,196,.36); background:rgba(8,7,17,.94); box-shadow:0 20px 70px rgba(0,0,0,.45); text-align:left; }
+        .onboarding-progress { color:var(--mint); font-size:9px; letter-spacing:.2em; text-transform:uppercase; }
+        #onboarding-guide-title { margin:7px 0 4px; font:400 20px/1.2 Georgia,serif; }
+        #onboarding-guide-copy { margin:0; color:#b7afc5; font-size:12px; line-height:1.55; }
+        #onboarding-camera-error { margin:10px 0 0; padding:10px; color:#ffdca8; border-left:2px solid #ffb35c; background:rgba(255,179,92,.08); font-size:11px; line-height:1.5; }
+        #onboarding-guide .onboarding-actions { margin-top:10px; }
+        #onboarding-guide button { width:auto; }
+        #onboarding-help { margin-top:8px; }
+        button:focus-visible { outline:2px solid var(--mint); outline-offset:3px; }
         @keyframes oracle-scan { 0%,100%{transform:scaleX(.2);opacity:.35} 50%{transform:scaleX(1);opacity:1} }
-        @media (max-width: 800px) { body{overflow:auto} #ui-layer{padding:16px;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto auto} .oracle-header{grid-column:1}.oracle-header h1{font-size:36px}.status-panel{grid-column:2}.oracle-console{grid-column:1 / 3;grid-row:3}.gesture-guide{display:none} #history-panel{grid-column:1 / 3;grid-row:4;position:relative;max-height:120px}.stage-orbit{width:78vw} #result-display{top:44%;padding:20px} }
-        @media (max-width: 520px) { #ui-layer{display:flex;flex-direction:column}.oracle-header p{display:none}.oracle-header h1{font-size:30px}.status-panel{position:absolute;right:16px;top:16px;width:44%}.oracle-console{margin-top:auto;align-self:stretch;width:100%} #topic-picker{grid-template-columns:repeat(5,1fr)} #history-panel{align-self:stretch;width:100%;max-height:88px} #result-title{font-size:38px} #ai-reading{padding:12px} }
+        @keyframes orientation-reveal { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+        @media (max-width: 800px) { body{overflow:hidden} #ui-layer{padding:16px;display:block}.oracle-header h1{font-size:34px}.oracle-header p{display:none}.status-panel{right:16px;top:150px;width:min(250px,46vw)}.oracle-console{right:16px;bottom:16px;width:min(300px,52vw)}.gesture-guide{display:none}#history-panel{left:16px;bottom:16px;width:min(250px,40vw);max-height:120px}.stage-orbit{width:78vw}#result-display{top:44%;padding:20px}#onboarding-guide{right:16px;top:16px;width:min(330px,calc(100vw - 32px))} }
+        @media (max-width: 520px) { .oracle-header h1{font-size:27px}.status-panel{top:82px;right:12px;width:46%;padding:9px}.oracle-console{right:12px;bottom:12px;width:54%;padding:10px}#topic-picker{grid-template-columns:repeat(5,1fr)}#history-panel{left:12px;bottom:12px;width:38%;max-height:96px;padding:10px}#result-title{font-size:38px}#ai-reading{padding:12px}.onboarding-options{grid-template-columns:1fr}.onboarding-topics{grid-template-columns:repeat(3,1fr)}#onboarding-guide{right:12px;top:12px;width:calc(100vw - 24px)}.onboarding-card{padding:22px}.onboarding-actions{flex-wrap:wrap}#shuffle-status{bottom:130px}.shuffle-actions{top:130px} }
         @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; transition-duration:.01ms!important; } }
     </style>
     <style id="legacy-styles" media="not all">
@@ -86,7 +117,6 @@
         #ai-text, #ai-action { margin: 6px 0; line-height: 1.55; }
         #ai-action { color: #b8dfcf; }
         #ai-disclaimer { color: #888; font-size: .72em; }
-        #ai-retry { width: auto; margin-top: 8px; }
         .reversed-tag { color: #ff4444; font-size: 0.6em; border: 1px solid #ff4444; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 10px; }
 
         /* History Panel */
@@ -120,15 +150,22 @@
 <body>
 
     <video id="input_video"></video>
-    <div id="loading">初始化神谕系统 (加载模型中)...</div>
+    <div id="loading" hidden>初始化神谕系统 (加载模型中)...</div>
 
     <div id="canvas-container"></div>
     <div class="stage-orbit" aria-hidden="true"></div>
+    <section id="shuffle-stage" aria-label="洗牌控制">
+        <div id="shuffle-status" role="status" aria-live="polite">DECK DORMANT · 等待洗牌</div>
+        <div class="shuffle-actions">
+            <button id="shuffle-action" type="button">开始洗牌</button>
+            <button id="shuffle-skip" type="button" hidden>跳过动画</button>
+        </div>
+    </section>
 
     <div id="ui-layer">
         <header class="oracle-header editorial-intro">
             <div class="eyebrow">ARCANA / SESSION 01</div>
-            <h1>Ether<br>Tarot</h1>
+            <h1>ETHER TAROT</h1>
             <p>THE INTERACTIVE ARCANA<br>让牌面在你的手势与直觉之间显现。</p>
         </header>
             <section class="oracle-console editorial-intro" aria-label="神谕控制台">
@@ -140,6 +177,7 @@
                 <div class="gesture-guide">
                     <span>01 张开<br>悬停</span><span>02 捏合<br>抓牌</span><span>03 握拳<br>揭示</span>
                 </div>
+                <button id="onboarding-help" type="button">？ 操作帮助</button>
             </section>
             <aside class="status-panel editorial-intro" aria-label="当前状态">
                 <div class="status-row"><span>Connection</span><span><span id="status-text">等待连接...</span> <span id="gesture-icon">—</span></span></div>
@@ -148,16 +186,55 @@
 
         <div id="result-display">
             <h1 id="result-title">THE FOOL</h1>
+            <div id="orientation-marker" hidden></div>
             <div id="result-meaning">The beginning of a journey, innocence, spontaneity.</div>
             <section id="ai-reading" aria-live="polite">
                 <h2 id="ai-headline">抽牌后生成星语</h2><p id="ai-text">选择主题，然后完成一次抽牌。</p>
                 <p id="ai-action" hidden></p><small id="ai-disclaimer">AI 生成 · 仅供娱乐与自我反思</small><br>
-                <button id="ai-retry" type="button" hidden>重试 AI 解读</button>
             </section>
         </div>
 
         <aside id="history-panel" class="editorial-intro" aria-label="抽牌记录"><div class="history-kicker">ARCHIVE · 抽牌记录</div></aside>
     </div>
+
+    <div id="onboarding-dialog" class="onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" tabindex="-1" hidden>
+        <article class="onboarding-card">
+            <section id="onboarding-mode-step">
+                <p class="onboarding-kicker">First ritual · 首次引导</p>
+                <h2 id="onboarding-title">你想怎样抽牌？</h2>
+                <p class="onboarding-copy">先选择最顺手的方式。之后随时可以切换，也能重新打开操作帮助。</p>
+                <div class="onboarding-options">
+                    <button class="onboarding-option" type="button" data-onboarding-mode="gesture"><strong>✋ 手势体验</strong><small>用张开、捏合和握拳完成抽牌。摄像头画面仅在浏览器本地用于手势识别。</small></button>
+                    <button class="onboarding-option" type="button" data-onboarding-mode="mouse"><strong>🖱️ 鼠标体验</strong><small>移动到牌堆，按住抓牌，松开即可揭示。</small></button>
+                </div>
+            </section>
+            <section id="onboarding-topic-step" hidden>
+                <p class="onboarding-kicker">Step 02 · 解读方向</p>
+                <h2>这次想关注什么？</h2>
+                <p class="onboarding-copy">主题只影响抽牌后的星语解读，不会改变你抽到哪张牌。</p>
+                <div class="onboarding-topics" aria-label="首次引导解读主题">
+                    <button type="button" data-onboarding-topic="general" aria-pressed="true">综合</button>
+                    <button type="button" data-onboarding-topic="love" aria-pressed="false">感情</button>
+                    <button type="button" data-onboarding-topic="career" aria-pressed="false">事业</button>
+                    <button type="button" data-onboarding-topic="wealth" aria-pressed="false">财运</button>
+                    <button type="button" data-onboarding-topic="growth" aria-pressed="false">成长</button>
+                </div>
+                <button id="onboarding-start" type="button">进入牌桌</button>
+            </section>
+            <div class="onboarding-actions"><button class="secondary" type="button" data-onboarding-skip>跳过引导</button></div>
+        </article>
+    </div>
+
+    <aside id="onboarding-guide" aria-live="polite" aria-labelledby="onboarding-guide-title" tabindex="-1" hidden>
+        <div id="onboarding-progress" class="onboarding-progress"></div>
+        <h2 id="onboarding-guide-title"></h2>
+        <p id="onboarding-guide-copy"></p>
+        <p id="onboarding-camera-error" hidden></p>
+        <div class="onboarding-actions">
+            <button id="onboarding-use-mouse" type="button" hidden>改用鼠标</button>
+            <button class="secondary" type="button" data-onboarding-skip>跳过引导</button>
+        </div>
+    </aside>
 
     <script type="module">
         import * as THREE from 'three';
@@ -166,23 +243,145 @@
         import { createThreeElementRenderer } from './src/client/effects/three-element-renderer.js';
         import { animate as animeAnimate, createTimeline, stagger } from 'https://cdn.jsdelivr.net/npm/animejs@4.5.0/+esm';
         import { createUiMotion } from './src/client/ui-motion.js';
+        import { updateOrientationMarker } from './src/client/orientation-marker.js';
+        import { createOnboardingController } from './src/client/onboarding.js';
+        import { createShuffleSequence } from './src/client/shuffle-sequence.js';
+        import { depthForApparentScale } from './src/client/card-presentation.js';
 
         const uiMotion = createUiMotion({ anime: { animate: animeAnimate, createTimeline, stagger } });
         uiMotion.intro();
         window.addEventListener('pagehide', () => uiMotion.destroy(), { once: true });
 
-        const aiElements = { headline: document.getElementById('ai-headline'), text: document.getElementById('ai-text'), action: document.getElementById('ai-action'), disclaimer: document.getElementById('ai-disclaimer'), retry: document.getElementById('ai-retry') };
+        const aiElements = { headline: document.getElementById('ai-headline'), text: document.getElementById('ai-text'), action: document.getElementById('ai-action'), disclaimer: document.getElementById('ai-disclaimer') };
         let lastReadingCard = null;
         const readingController = createReadingController({ view: {
-            showLoading() { aiElements.headline.textContent = '星语生成中…'; aiElements.text.textContent = '正在结合牌面与所选主题生成受控解读。'; aiElements.action.hidden = true; aiElements.retry.hidden = true; uiMotion.setAiState('loading'); },
-            showSuccess(value) { aiElements.headline.textContent = value.headline; aiElements.text.textContent = value.reading; aiElements.action.textContent = `行动提示：${value.action}`; aiElements.action.hidden = false; aiElements.disclaimer.textContent = `AI 生成 · ${value.disclaimer}`; aiElements.retry.hidden = true; uiMotion.setAiState('success'); },
-            showError(message) { aiElements.headline.textContent = 'AI 解读暂不可用'; aiElements.text.textContent = `${message} 固定牌义仍可正常参考。`; aiElements.action.hidden = true; aiElements.retry.hidden = false; uiMotion.setAiState('error'); }
+            showLoading() { aiElements.headline.textContent = '星语生成中…'; aiElements.text.textContent = '正在结合牌面与所选主题生成受控解读。'; aiElements.action.hidden = true; uiMotion.setAiState('loading'); },
+            showSuccess(value) { aiElements.headline.textContent = value.headline; aiElements.text.textContent = value.reading; aiElements.action.textContent = `行动提示：${value.action}`; aiElements.action.hidden = false; aiElements.disclaimer.textContent = `AI 生成 · ${value.disclaimer}`; uiMotion.setAiState('success'); },
+            showError(message) { aiElements.headline.textContent = 'AI 解读暂不可用'; aiElements.text.textContent = `${message} 固定牌义仍可正常参考。`; aiElements.action.hidden = true; uiMotion.setAiState('error'); }
         }});
-        document.querySelectorAll('#topic-picker button').forEach(button => button.addEventListener('click', () => {
-            readingController.setTopic(button.dataset.topic);
-            document.querySelectorAll('#topic-picker button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        function selectTopic(topic) {
+            readingController.setTopic(topic);
+            document.querySelectorAll('[data-topic], [data-onboarding-topic]').forEach(item => {
+                const value = item.dataset.topic || item.dataset.onboardingTopic;
+                item.setAttribute('aria-pressed', String(value === topic));
+            });
+        }
+        document.querySelectorAll('#topic-picker button').forEach(button => button.addEventListener('click', () => selectTopic(button.dataset.topic)));
+
+        const onboarding = createOnboardingController();
+        const onboardingElements = {
+            dialog: document.getElementById('onboarding-dialog'),
+            modeStep: document.getElementById('onboarding-mode-step'),
+            topicStep: document.getElementById('onboarding-topic-step'),
+            guide: document.getElementById('onboarding-guide'),
+            progress: document.getElementById('onboarding-progress'),
+            title: document.getElementById('onboarding-guide-title'),
+            copy: document.getElementById('onboarding-guide-copy'),
+            cameraError: document.getElementById('onboarding-camera-error'),
+            useMouse: document.getElementById('onboarding-use-mouse'),
+            help: document.getElementById('onboarding-help'),
+        };
+        let onboardingReturnFocus = null;
+        let onboardingDialogWasOpen = false;
+        let cameraNotice = '';
+
+        const GUIDE_COPY = {
+            shuffle: ['先唤醒这副牌', '点击中央的“开始洗牌”，让牌组完成一次完整洗牌后再抽取。'],
+            'locate-input': ['让镜头看见你的手', '将整只手放进画面，识别成功后会自动进入下一步。'],
+            'target-deck': ['移向中央牌堆', '让青色光标停在牌背上，感受你想抽出的那一张。'],
+            'result-explainer': ['读懂你的牌', '正位或逆位是本次牌面方向；固定牌义始终可用，星语则会结合你选择的主题生成，仅供娱乐与自我反思。'],
+        };
+
+        function guideCopyFor(phase, mode) {
+            if (phase === 'grab') return ['抓住一张牌', mode === 'gesture' ? '拇指与食指捏合，保持动作直到牌被拿起。' : '按住鼠标拿起一张牌。'];
+            if (phase === 'reveal') return ['揭示牌面', mode === 'gesture' ? '握拳确认这张牌。' : '松开鼠标确认这张牌。'];
+            return GUIDE_COPY[phase] || ['', ''];
+        }
+
+        function renderOnboarding({ focus = false } = {}) {
+            const state = onboarding.getState();
+            const dialogOpen = state.active && (state.phase === 'welcome' || state.phase === 'topic');
+            onboardingElements.dialog.hidden = !dialogOpen;
+            onboardingElements.modeStep.hidden = state.phase !== 'welcome';
+            onboardingElements.topicStep.hidden = state.phase !== 'topic';
+
+            const guideOpen = state.active && !dialogOpen && state.phase !== 'complete' && state.phase !== 'shuffle';
+            onboardingElements.guide.hidden = !guideOpen;
+            if (guideOpen) {
+                const [title, copy] = guideCopyFor(state.phase, state.mode);
+                const path = state.mode === 'gesture'
+                    ? ['shuffle', 'locate-input', 'target-deck', 'grab', 'reveal']
+                    : ['shuffle', 'target-deck', 'grab', 'reveal'];
+                const index = path.indexOf(state.phase);
+                onboardingElements.progress.textContent = state.phase === 'result-explainer' ? 'FIRST DRAW · 首次抽牌完成' : `STEP ${Math.max(index + 1, 1)} / ${path.length}`;
+                onboardingElements.title.textContent = title;
+                onboardingElements.copy.textContent = copy;
+                onboardingElements.cameraError.textContent = cameraNotice;
+                onboardingElements.cameraError.hidden = !cameraNotice;
+                onboardingElements.useMouse.hidden = state.mode !== 'gesture' || !cameraNotice;
+                const skip = onboardingElements.guide.querySelector('[data-onboarding-skip]');
+                skip.textContent = state.phase === 'result-explainer' ? '知道了' : '跳过引导';
+            }
+
+            if (dialogOpen && (!onboardingDialogWasOpen || focus)) onboardingElements.dialog.focus();
+            if (!dialogOpen && onboardingDialogWasOpen && onboardingReturnFocus) onboardingReturnFocus.focus();
+            if (guideOpen && state.phase === 'result-explainer') onboardingElements.guide.focus();
+            onboardingDialogWasOpen = dialogOpen;
+        }
+
+        function advanceOnboarding(event) {
+            const before = onboarding.getState().phase;
+            onboarding.notify(event);
+            if (onboarding.getState().phase !== before) renderOnboarding();
+        }
+
+        document.querySelectorAll('[data-onboarding-mode]').forEach(button => button.addEventListener('click', () => {
+            onboarding.selectMode(button.dataset.onboardingMode);
+            renderOnboarding({ focus: true });
         }));
-        aiElements.retry.addEventListener('click', () => lastReadingCard && readingController.requestReading(lastReadingCard));
+        document.querySelectorAll('[data-onboarding-topic]').forEach(button => button.addEventListener('click', () => {
+            onboarding.selectTopic(button.dataset.onboardingTopic);
+            selectTopic(button.dataset.onboardingTopic);
+        }));
+        document.getElementById('onboarding-start').addEventListener('click', async () => {
+            const { mode } = onboarding.getState();
+            applyInputMode(mode, { replayGuide: false });
+            onboarding.start();
+            renderOnboarding();
+            if (mode === 'gesture') await startGestureCamera();
+        });
+        function dismissOnboarding() {
+            const state = onboarding.getState();
+            if (state.phase === 'result-explainer') onboarding.complete();
+            else {
+                if (state.firstVisit && (state.phase === 'welcome' || state.phase === 'topic')) {
+                    const mode = state.mode || 'mouse';
+                    applyInputMode(mode, { replayGuide: false });
+                    if (mode === 'gesture') startGestureCamera();
+                }
+                onboarding.skip();
+            }
+            renderOnboarding();
+        }
+        document.querySelectorAll('[data-onboarding-skip]').forEach(button => button.addEventListener('click', dismissOnboarding));
+        onboardingElements.help.addEventListener('click', () => {
+            onboardingReturnFocus = onboardingElements.help;
+            cameraNotice = '';
+            onboarding.replay(STATE.mode);
+            if (shuffleSequence.getState().ready) onboarding.notify('shuffle-complete');
+            renderOnboarding({ focus: true });
+        });
+        onboardingElements.useMouse.addEventListener('click', () => {
+            cameraNotice = '';
+            applyInputMode('mouse', { replayGuide: false });
+            onboarding.replay('mouse');
+            renderOnboarding({ focus: true });
+        });
+        window.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || !onboarding.getState().active) return;
+            dismissOnboarding();
+        });
+        renderOnboarding({ focus: true });
 
         // --- Configuration ---
         const CONFIG = {
@@ -190,6 +389,7 @@
             cardHeight: 4.3,
             zIndexPinch: 0.04, // Threshold for pinch
             cameraZ: 12,
+            heldCardScale: 1.12,
             dragSpeed: 0.15,
             particleLife: 2.0 // Seconds
         };
@@ -230,7 +430,7 @@
                 name: name, 
                 type: 'major',
                 // Using local images
-                img: `../tarot_img/${i < 10 ? '0' + i : i}.jpg`, 
+                img: `/tarot_img/${i < 10 ? '0' + i : i}.jpg`,
                 meaningUp: "新的开始，自由，纯真。", 
                 meaningRev: "鲁莽，冒险，愚蠢。" 
             });
@@ -243,7 +443,7 @@
                     name: `${rank} of ${suit}`, 
                     type: 'minor',
                     suit,
-                    img: `../tarot_img/${suit}_${rank}.jpg`, 
+                    img: `/tarot_img/${suit}_${rank}.jpg`,
                     meaningUp: `${suit} 正位含义 - 能量流动`, 
                     meaningRev: `${suit} 逆位含义 - 能量受阻` 
                 });
@@ -271,7 +471,7 @@
         camera.lookAt(0,0,0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setClearColor(0x070711, 1);
+        renderer.setClearColor(0x030303, 1);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
@@ -285,7 +485,45 @@
 
         // --- Texture Loader ---
         const textureLoader = new THREE.TextureLoader();
-        const backTexture = textureLoader.load('https://upload.wikimedia.org/wikipedia/commons/d/d4/RWS_Tarot_Card_Back.jpg'); // Standard RWS Back
+        function createDeckBackTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 832;
+            const context = canvas.getContext('2d');
+            context.fillStyle = '#090806';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.strokeStyle = '#d8b96f';
+            context.lineWidth = 8;
+            context.strokeRect(24, 24, 464, 784);
+            context.lineWidth = 2;
+            context.strokeRect(42, 42, 428, 748);
+            context.beginPath();
+            context.arc(256, 416, 126, 0, Math.PI * 2);
+            context.stroke();
+            context.fillStyle = '#d8b96f';
+            context.beginPath();
+            context.arc(256, 416, 92, 0, Math.PI * 2);
+            context.fill();
+            context.fillStyle = '#090806';
+            context.beginPath();
+            context.arc(292, 387, 94, 0, Math.PI * 2);
+            context.fill();
+            for (let index = 0; index < 28; index++) {
+                const angle = index * 2.399;
+                const distance = 158 + (index % 5) * 22;
+                const x = 256 + Math.cos(angle) * distance;
+                const y = 416 + Math.sin(angle) * distance * 1.45;
+                context.fillStyle = index % 3 === 0 ? '#f2eee4' : '#8e7847';
+                context.beginPath();
+                context.arc(x, y, index % 4 === 0 ? 3 : 1.8, 0, Math.PI * 2);
+                context.fill();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            return texture;
+        }
+        const backTexture = createDeckBackTexture();
         const defaultFront = textureLoader.load('https://via.placeholder.com/300x520/222/555?text=Tarot');
 
         // --- Objects ---
@@ -296,7 +534,7 @@
         const raycaster = new THREE.Raycaster();
         const cursorMesh = new THREE.Mesh(
             new THREE.RingGeometry(0.1, 0.15, 32),
-            new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+            new THREE.MeshBasicMaterial({ color: 0xd8b96f, transparent: true, opacity: 0.58, side: THREE.DoubleSide })
         );
         scene.add(cursorMesh);
 
@@ -321,31 +559,111 @@
         const particleSystem = new THREE.Points(particleGeo, particleMat);
         scene.add(particleSystem);
 
-        // --- Deck Visuals ---
-        function spawnDeck() {
-            // Create a stack visual
-            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.12);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: 0x4b356f,
-                map: backTexture,
-                emissive: 0x5a3b10,
-                emissiveIntensity: 0.38,
-                roughness: 0.55
-            });
+        // --- 78-card Deck Visuals ---
+        let shuffleCards = [];
+        let deckOutline = null;
 
-            // Create a "Deck" object to pick from
-            const deckMesh = new THREE.Mesh(geometry, material);
-            deckMesh.position.set(0, -2, 0);
-            deckMesh.userData = { isDeck: true };
-            const outline = new THREE.LineSegments(
+        function spawnDeck() {
+            const geometry = new THREE.BoxGeometry(CONFIG.cardWidth, CONFIG.cardHeight, 0.025);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff,
+                map: backTexture,
+                emissive: 0x5a441c,
+                emissiveIntensity: 0.28,
+                roughness: 0.62
+            });
+            shuffleCards = STATE.deck.map((cardId, index) => {
+                const card = new THREE.Mesh(geometry, material);
+                card.position.set(0, -2, index * 0.006);
+                card.userData = { isDeck: false, isShuffleCard: true, cardId };
+                cardGroup.add(card);
+                return card;
+            });
+            deckOutline = new THREE.LineSegments(
                 new THREE.EdgesGeometry(geometry),
-                new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.95 })
+                new THREE.LineBasicMaterial({ color: 0xd8b96f, transparent: true, opacity: 0.95 })
             );
-            outline.raycast = () => {};
-            deckMesh.add(outline);
-            cardGroup.add(deckMesh);
+            deckOutline.raycast = () => {};
+            shuffleCards.at(-1).add(deckOutline);
+            return shuffleCards;
+        }
+
+        function promoteTopDeckCard() {
+            shuffleCards.forEach(card => { card.userData.isDeck = false; });
+            const topCard = [...shuffleCards].reverse().find(card => card.visible);
+            if (!topCard) return;
+            topCard.userData.isDeck = true;
+            if (deckOutline) {
+                topCard.add(deckOutline);
+                deckOutline.visible = true;
+            }
+        }
+
+        function consumeTopDeckCard() {
+            const topCard = shuffleCards.find(card => card.userData.isDeck);
+            if (!topCard) return;
+            topCard.userData.isDeck = false;
+            topCard.visible = false;
+            promoteTopDeckCard();
         }
         spawnDeck();
+
+        const shuffleElements = {
+            status: document.getElementById('shuffle-status'),
+            action: document.getElementById('shuffle-action'),
+            skip: document.getElementById('shuffle-skip'),
+        };
+        const SHUFFLE_LABELS = {
+            converge: 'CONVERGE · 牌组收束',
+            sphere: 'ASCEND · 球状散开',
+            orbit: 'ORBIT · 星轨洗牌',
+            cut: 'CUT · 分叠切牌',
+            merge: 'MERGE · 交错合拢',
+            ready: 'DECK READY · 牌已就绪',
+        };
+        const shuffleSequence = createShuffleSequence({
+            reducedMotion: effectTier === 'reduced',
+            radius: window.innerWidth <= 520 ? 2.65 : 3.4,
+            deckY: -2,
+        });
+        let lastShufflePhase = 'idle';
+
+        function updateShuffleUi() {
+            const shuffleState = shuffleSequence.getState();
+            if (shuffleState.phase === lastShufflePhase) return;
+            lastShufflePhase = shuffleState.phase;
+            shuffleElements.status.textContent = SHUFFLE_LABELS[shuffleState.phase] || 'DECK DORMANT · 等待洗牌';
+            shuffleElements.skip.hidden = !shuffleState.active;
+            shuffleElements.action.hidden = shuffleState.active;
+            if (shuffleState.ready) {
+                shuffleElements.action.hidden = false;
+                shuffleElements.action.textContent = '重新洗牌';
+            }
+        }
+
+        function finishShuffle() {
+            STATE.locked = false;
+            promoteTopDeckCard();
+            updateShuffleUi();
+            advanceOnboarding('shuffle-complete');
+        }
+
+        function startShuffle() {
+            if (STATE.locked || STATE.heldCard || shuffleSequence.getState().active || STATE.deck.length !== TAROT_DATA.length) return;
+            STATE.locked = true;
+            shuffleCards.forEach(card => {
+                card.visible = true;
+                card.userData.isDeck = false;
+            });
+            if (deckOutline) deckOutline.visible = false;
+            shuffleSequence.start(shuffleCards);
+            lastShufflePhase = 'idle';
+            updateShuffleUi();
+        }
+
+        shuffleSequence.onComplete(finishShuffle);
+        shuffleElements.action.addEventListener('click', startShuffle);
+        shuffleElements.skip.addEventListener('click', () => shuffleSequence.skip());
 
         // --- Ash Logic ---
         function triggerAshEffect(mesh) {
@@ -429,6 +747,10 @@
         function createHeldCard() {
             const draw = drawRandomCard();
             if(!draw) return;
+            consumeTopDeckCard();
+            shuffleElements.action.disabled = true;
+            shuffleElements.action.hidden = true;
+            shuffleElements.status.textContent = 'CARD CHOSEN · 牌已选定';
 
             STATE.drawnCardData = draw;
 
@@ -503,6 +825,7 @@
             scene.add(mesh);
             STATE.heldCard = mesh;
             elementEffect.prepare(draw.data, draw.isReversed ? 'reversed' : 'upright', mesh.position);
+            advanceOnboarding('card-grabbed');
             return mesh;
         }
 
@@ -516,19 +839,19 @@
             
             // 1. UI Show
             const title = document.getElementById('result-title');
+            const orientationMarker = document.getElementById('orientation-marker');
             const meaning = document.getElementById('result-meaning');
             const display = document.getElementById('result-display');
             
-            let nameText = data.name;
-            if(isRev) nameText += " <span class='reversed-tag'>逆位 (Reversed)</span>";
-            
-            title.innerHTML = nameText;
+            title.textContent = data.name;
+            updateOrientationMarker(orientationMarker, isRev);
             meaning.innerText = isRev ? data.meaningRev : data.meaningUp;
             lastReadingCard = { cardName: data.name, orientation: isRev ? 'reversed' : 'upright', standardMeaning: isRev ? data.meaningRev : data.meaningUp };
             readingController.requestReading(lastReadingCard);
             
             display.style.opacity = 1;
             uiMotion.revealResult();
+            advanceOnboarding('card-revealed');
 
             // 2. History Log
             const historyPanel = document.getElementById('history-panel');
@@ -559,6 +882,7 @@
             // Raycasting
             raycaster.setFromCamera(STATE.pointer, camera);
             const intersects = raycaster.intersectObjects(cardGroup.children);
+            if (intersects.some(hit => hit.object.userData.isDeck)) advanceOnboarding('deck-targeted');
             
             // Visual Cursor
             const vector = new THREE.Vector3(STATE.pointer.x, STATE.pointer.y, 0.5);
@@ -576,9 +900,9 @@
             const isFist = (gesture === 'FIST' && STATE.mode === 'gesture');
 
             // Colorize cursor based on state
-            if (isPinch) cursorMesh.material.color.set(0xff00ff);
-            else if (isFist) cursorMesh.material.color.set(0xff0000);
-            else cursorMesh.material.color.set(0x00ffff);
+            if (isPinch) cursorMesh.material.color.set(0xf2eee4);
+            else if (isFist) cursorMesh.material.color.set(0xd48772);
+            else cursorMesh.material.color.set(0xd8b96f);
 
             // 1. Grabbing Card
             if (isPinch && !STATE.heldCard) {
@@ -593,7 +917,7 @@
             if (STATE.heldCard) {
                 // Target position: slightly in front of camera, following cursor
                 const targetPos = pos.clone();
-                targetPos.z = 8; // Bring close to camera
+                targetPos.z = depthForApparentScale(CONFIG.cameraZ, CONFIG.heldCardScale);
                 targetPos.y += 0.5; // Slightly above finger
 
                 STATE.heldCard.position.lerp(targetPos, CONFIG.dragSpeed);
@@ -626,6 +950,8 @@
                 STATE.handVisible = true;
                 statusText.innerText = "已连接";
                 statusText.style.color = "#0f0";
+                cameraNotice = '';
+                advanceOnboarding('hand-visible');
                 
                 const landmarks = results.multiHandLandmarks[0];
                 
@@ -702,33 +1028,64 @@
             height: 480
         });
 
-        // Start Camera
-        cameraUtils.start().then(() => {
-            document.getElementById('loading').style.display = 'none';
-        }).catch(err => {
-            console.error(err);
-            document.getElementById('loading').innerText = "摄像头失败，切换至鼠标模式";
-            setTimeout(() => {
-                toggleMode(true);
-                document.getElementById('loading').style.display = 'none';
-            }, 2000);
-        });
+        let cameraStartPromise = null;
+        let noHandTimer = null;
+
+        async function startGestureCamera() {
+            if (cameraStartPromise) return cameraStartPromise;
+            const loading = document.getElementById('loading');
+            loading.textContent = '初始化神谕系统 (加载模型中)...';
+            loading.hidden = false;
+            statusText.innerText = '等待摄像头授权...';
+            cameraStartPromise = cameraUtils.start().then(() => {
+                loading.hidden = true;
+                statusText.innerText = '请将手放入画面';
+                clearTimeout(noHandTimer);
+                noHandTimer = setTimeout(() => {
+                    if (STATE.mode !== 'gesture' || STATE.handVisible) return;
+                    cameraNotice = '还没看到手。请后退一点，让手腕和五指完整进入画面；也可以改用鼠标继续。';
+                    renderOnboarding();
+                }, 7000);
+                return true;
+            }).catch(err => {
+                console.error(err);
+                cameraStartPromise = null;
+                loading.hidden = true;
+                statusText.innerText = '摄像头不可用';
+                statusText.style.color = '#ffb35c';
+                cameraNotice = '无法启动摄像头。请检查浏览器权限，或改用鼠标继续这次抽牌。';
+                renderOnboarding({ focus: true });
+                return false;
+            });
+            return cameraStartPromise;
+        }
 
         // --- Mouse Fallback ---
-        function toggleMode(forceMouse = false) {
+        function applyInputMode(mode, { replayGuide = true } = {}) {
             const btn = document.getElementById('btn-mode');
-            if (STATE.mode === 'gesture' || forceMouse) {
-                STATE.mode = 'mouse';
+            STATE.mode = mode;
+            STATE.isInteracting = false;
+            if (mode === 'mouse') {
                 btn.innerText = "切换模式: 🖱️ 鼠标";
                 statusText.innerText = "鼠标模式";
                 videoElement.pause();
-                // Reset gesture state
-                STATE.gesture = 'OPEN'; 
+                STATE.gesture = 'OPEN';
             } else {
-                STATE.mode = 'gesture';
                 btn.innerText = "切换模式: ✋ 手势";
-                videoElement.play();
+                statusText.innerText = '等待摄像头...';
+                if (videoElement.srcObject) videoElement.play();
             }
+            if (replayGuide && onboarding.getState().active) {
+                cameraNotice = '';
+                onboarding.replay(mode);
+                renderOnboarding();
+            }
+        }
+
+        function toggleMode(forceMouse = false) {
+            const nextMode = forceMouse || STATE.mode === 'gesture' ? 'mouse' : 'gesture';
+            applyInputMode(nextMode);
+            if (nextMode === 'gesture') startGestureCamera();
         }
 
         document.getElementById('btn-mode').addEventListener('click', () => toggleMode());
@@ -754,6 +1111,8 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        if (onboarding.getState().completed) startGestureCamera();
+
         // --- Animation Loop ---
         const clock = new THREE.Clock();
 
@@ -761,6 +1120,8 @@
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
 
+            shuffleSequence.update(dt);
+            updateShuffleUi();
             updateInteraction(dt);
             updateParticles(dt);
             elementEffect.update(dt);
