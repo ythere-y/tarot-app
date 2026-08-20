@@ -135,7 +135,7 @@ test("recognizes a fist rising edge after reset", () => {
 
 test("page exposes a three-card spread and a layered deck", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /id="spread-progress"/);
+  assert.doesNotMatch(html, /id="spread-progress"/);
   assert.match(html, /\[-2\.35, 0, 2\.35\]/);
   assert.match(html, /STATE\.deck\.map\(\(cardId, index\)/);
   assert.match(html, /index \* 0\.006/);
@@ -185,4 +185,15 @@ test("page flips each placed card and stops after the third", async () => {
   assert.match(html, /updateCardLabels\(dt\)/);
   assert.match(html, /fillText\(draw\.data\.name\.toUpperCase\(\), canvas\.width \/ 2, 64\)/);
   assert.match(html, /fillText\(chineseCardName\(draw\.data\), canvas\.width \/ 2, 136\)/);
+  assert.match(html, /id="prophecy-panel"/);
+  assert.match(html, /function enterProphecyPhase\(\)/);
+  assert.match(html, /prophecyPanel\.classList\.add\('is-growing'\)/);
+  assert.match(html, /window\.location\.reload\(\)/);
+  assert.match(html, /id="prophecy-flow"/);
+  assert.match(html, /import \{ buildProphecyPrompt \} from '\.\/src\/client\/prophecy-prompt\.js'/);
+  assert.match(html, /const prompt = buildProphecyPrompt\(\{/);
+  assert.match(html, /console\.debug\('\[prophecy\] LLM prompt', prompt\)/);
+  assert.match(html, /function moveCardsIntoProphecyLayout\(onComplete\)/);
+  assert.match(html, /moveCardsIntoProphecyLayout\(\(\) => drawProphecyConnections/);
+  assert.match(html, /function hideDeckForProphecy\(\)/);
 });

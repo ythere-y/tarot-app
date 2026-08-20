@@ -23,7 +23,7 @@ const validOutput = {
 };
 
 test('accepts all fixed topics and orientations', () => {
-  for (const topic of ['general', 'love', 'career', 'wealth', 'growth']) {
+  for (const topic of ['general', 'love', 'career', 'mood', 'spiritual']) {
     for (const orientation of ['upright', 'reversed']) {
       assert.deepEqual(validateReadingRequest({ ...validRequest, topic, orientation }), {
         ...validRequest,
