@@ -1,4 +1,5 @@
 .worktrees/
+.edgeone/
 node_modules/
 dist/
 .superpowers/

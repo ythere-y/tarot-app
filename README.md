@@ -49,7 +49,7 @@ npm start
 PAGES_SOURCE=skills edgeone makers dev --name tarot-app --skip-env-sync
 ```
 
-然后通过 [http://127.0.0.1:8088/](http://127.0.0.1:8088/) 访问。请勿使用 `file://` 打开页面，否则 Cloud Function 路由不可用。
+然后通过 [http://127.0.0.1:8088/](http://127.0.0.1:8088/) 访问。请勿使用 `file://` 打开页面，否则 Cloud Function 路由不可用。线上环境的 `DEEPSEEK_API_KEY` 和 `DEEPSEEK_MODEL` 应配置在 Makers 项目环境变量中，不要提交真实 `.env`。
 
 <p align="center">
   一款通过手势操控的沉浸式浏览器塔罗体验。<br>
