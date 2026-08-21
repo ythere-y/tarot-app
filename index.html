@@ -666,7 +666,7 @@
             : ((navigator.hardwareConcurrency || 4) <= 4 ? 'low' : 'standard');
         const elementEffect = createMinorEffectController({
             tier: effectTier,
-            rendererFactory: ({ profile, anchor }) => createThreeElementRenderer({ THREE, scene, profile, anchor })
+            rendererFactory: ({ profile, anchor }) => createThreeElementRenderer({ THREE, scene, profile, anchor, anime: animeAnimate })
         });
         scene.fog = new THREE.FogExp2(0x050505, 0.02);
 
@@ -1228,12 +1228,14 @@
             // Start invisible/small? No, just appear at hand
             scene.add(mesh);
             STATE.heldCard = mesh;
+            elementEffect.prepare(draw.data, draw.isReversed ? 'reversed' : 'upright', mesh.position, mesh);
             advanceOnboarding('card-grabbed');
             return mesh;
         }
 
         function cancelHeldCard() {
             if (!STATE.heldCard || STATE.locked) return;
+            elementEffect.dispose(STATE.heldCard);
             scene.remove(STATE.heldCard);
             STATE.deck.push(STATE.drawnCardData.data.id);
             if (STATE.consumedDeckCard) STATE.consumedDeckCard.visible = true;
@@ -1258,6 +1260,7 @@
             STATE.drawnCardData = null;
             STATE.consumedDeckCard = null;
             setHoveredSlot(-1);
+            elementEffect.reveal(card);
             cardAnimations.push({
                 card,
                 slot,
@@ -1267,6 +1270,7 @@
                 startScale: card.scale.clone(),
                 startRotationY: card.rotation.y,
                 onComplete() {
+                    elementEffect.settle(card);
                     createCardNameLabel(draw, slot);
                     const complete = STATE.placedCards.length === 3;
                     STATE.locked = complete;
@@ -1534,6 +1538,7 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+        window.addEventListener('pagehide', () => elementEffect.dispose(), { once: true });
 
         // --- Animation Loop ---
         const clock = new THREE.Clock();

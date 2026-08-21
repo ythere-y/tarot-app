@@ -114,6 +114,9 @@ test('app exposes four Tarotoo topics and AI reading contract', async () => {
     const placementSource = html.slice(html.indexOf('function placeHeldCard'), html.indexOf('function updateCardAnimations'));
     assert.doesNotMatch(placementSource, /requestReading|fetch\(/);
     assert.match(html, /elementEffect\.update\(dt\)/);
+    assert.match(html, /elementEffect\.prepare\(draw\.data, draw\.isReversed \? 'reversed' : 'upright', mesh\.position, mesh\)/);
+    assert.match(html, /elementEffect\.reveal\(card\)/);
+    assert.match(html, /elementEffect\.settle\(card\)/);
     assert.match(html, /suit: suit \|\| null/);
     const response = await fetch(`${base}/api/reading`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ topic: 'general', cardName: 'The Fool', orientation: 'upright', standardMeaning: '新的开始。' }) });
     assert.deepEqual(await response.json(), expected);
